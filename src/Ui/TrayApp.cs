@@ -159,10 +159,11 @@ public sealed class TrayApp : IDisposable
         }
     }
 
-    // Клавиша «Настройки»: по умолчанию заряд 80↔100; "SettingsKey": "settings" → Параметры Windows
+    // Клавиша «Настройки»: по умолчанию заряд 80↔100; "SettingsKey": "settings" → Параметры Windows.
+    // При открытой панели — всегда заряд (переключается пилюля в ней), независимо от ремапа.
     private void OnSettingsKey()
     {
-        if (string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase))
+        if (!_panel.Visible && string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase))
             KeyActions.OpenSettings();
         else
             ToggleCharge();

@@ -57,4 +57,5 @@ public enum PerfMode : byte
     Turbo = 0x03,
     FullSpeed = 0x04, // требует DC-питания, не USB-C
     Auto = 0x09,      // «умный», только TM24
+    Eco = 0x0A,       // скрытый: значение из EC-референса (рег. 0x68), прошивка TM24 принимает
 }

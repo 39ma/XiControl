@@ -32,6 +32,7 @@ public static class TrayIcons
     {
         string name = mode switch
         {
+            PerfMode.Eco => SvgIcons.TrayPerfEco,
             PerfMode.Quiet => SvgIcons.TrayPerfQuiet,
             PerfMode.Turbo => SvgIcons.TrayPerfTurbo,
             PerfMode.FullSpeed => SvgIcons.TrayPerfFull,

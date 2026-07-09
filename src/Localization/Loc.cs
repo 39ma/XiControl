@@ -12,6 +12,7 @@ public static class Loc
         ["app.name"]        = ["Xi Control", "Xi Control"],
         ["menu.charge"]     = ["Беречь батарею (80%)", "Battery care (80%)"],
         ["menu.perf"]       = ["Режим производительности", "Performance mode"],
+        ["mode.eco"]        = ["Эко", "Eco"],
         ["mode.quiet"]      = ["Тихий", "Quiet"],
         ["mode.turbo"]      = ["Турбо", "Turbo"],
         ["mode.full"]       = ["Полная мощность", "Full speed"],

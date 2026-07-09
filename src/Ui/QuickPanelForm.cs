@@ -22,6 +22,7 @@ public sealed class QuickPanelForm : Form
 
     private static readonly (PerfMode mode, string key, Color accent)[] Modes =
     {
+        (PerfMode.Eco,       "mode.eco",   Color.FromArgb(144, 164, 174)),
         (PerfMode.Quiet,     "mode.quiet", Green),
         (PerfMode.Auto,      "mode.auto",  Blue),
         (PerfMode.Turbo,     "mode.turbo", Orange),
@@ -31,12 +32,12 @@ public sealed class QuickPanelForm : Form
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
 
-    private readonly Rectangle[] _modeRects = new Rectangle[4];
+    private readonly Rectangle[] _modeRects = new Rectangle[Modes.Length];
     private Rectangle _care80, _care100, _close;
 
     private PerfMode? _mode;
     private bool _care;
-    private int _hover = -1; // 0..3 режимы, 10=80, 11=100, 12=close
+    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close
 
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
     public Action? Changed;
@@ -90,8 +91,9 @@ public sealed class QuickPanelForm : Form
 
     private void DoLayout()
     {
+        int n = Modes.Length;
         int p = Sc(16), header = Sc(28), cellW = Sc(84), cellH = Sc(94), gap = Sc(8);
-        int content = cellW * 4 + gap * 3;
+        int content = cellW * n + gap * (n - 1);
         int width = content + p * 2;
 
         int modeY = p + header + Sc(4);
@@ -100,7 +102,7 @@ public sealed class QuickPanelForm : Form
         int pillsH = Sc(42);
         int height = pillsY + pillsH + p;
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < n; i++)
             _modeRects[i] = new Rectangle(p + i * (cellW + gap), modeY, cellW, cellH);
 
         int half = (content - gap) / 2;
@@ -135,7 +137,7 @@ public sealed class QuickPanelForm : Form
     {
         int h = HitTest(e.Location);
         if (h == 12) { Hide(); return; }
-        if (h is >= 0 and <= 3)
+        if (h >= 0 && h < Modes.Length)
         {
             try { _mifs.SetPerfMode(Modes[h].mode); } catch { }
             RefreshState();
@@ -155,7 +157,7 @@ public sealed class QuickPanelForm : Form
     private int HitTest(Point pt)
     {
         if (_close.Contains(pt)) return 12;
-        for (int i = 0; i < 4; i++) if (_modeRects[i].Contains(pt)) return i;
+        for (int i = 0; i < Modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
         return -1;
@@ -185,7 +187,7 @@ public sealed class QuickPanelForm : Form
         DrawClose(g, _close, _hover == 12);
 
         // режимы
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < Modes.Length; i++)
         {
             var r = _modeRects[i];
             bool active = _mode == Modes[i].mode;
@@ -226,6 +228,7 @@ public sealed class QuickPanelForm : Form
     {
         string name = m switch
         {
+            PerfMode.Eco => SvgIcons.PerfEco,
             PerfMode.Quiet => SvgIcons.PerfQuiet,
             PerfMode.Auto => SvgIcons.PerfAuto,
             PerfMode.Turbo => SvgIcons.PerfTurbo,

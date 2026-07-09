@@ -11,6 +11,15 @@ public sealed class AppConfig
     public bool ChargeCare { get; set; } = false;
     public bool AutoStart { get; set; } = false;
 
+    /// <summary>
+    /// Что запускать AI-клавишей: путь к exe/файлу/URL (поддерживаются %ПЕРЕМЕННЫЕ%).
+    /// Пусто → Copilot (Win+C). Настраивается только правкой config.json.
+    /// </summary>
+    public string? AiKeyProgram { get; set; }
+
+    /// <summary>Аргументы командной строки для AiKeyProgram (опционально).</summary>
+    public string? AiKeyArgs { get; set; }
+
     [JsonIgnore]
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "XiControl");

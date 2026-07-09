@@ -22,12 +22,14 @@ public static class SvgIcons
     public const string MicOn = "mic-on";
     public const string MicOff = "mic-off";
     public const string PerfAuto = "perf-auto";
+    public const string PerfEco = "perf-eco";
     public const string PerfFull = "perf-full";
     public const string PerfQuiet = "perf-quiet";
     public const string PerfTurbo = "perf-turbo";
     public const string Settings = "settings";
 
     // Трей (монохром, currentColor, 24×24)
+    public const string TrayPerfEco = "tray-perf-eco";
     public const string TrayPerfFull = "tray-perf-full";
     public const string TrayPerfQuiet = "tray-perf-quiet";
     public const string TrayPerfTurbo = "tray-perf-turbo";

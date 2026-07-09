@@ -32,6 +32,7 @@ public sealed class TrayApp : IDisposable
 
     private static readonly (string key, PerfMode mode)[] Modes =
     [
+        ("mode.eco",   PerfMode.Eco),
         ("mode.quiet", PerfMode.Quiet),
         ("mode.auto",  PerfMode.Auto),
         ("mode.turbo", PerfMode.Turbo),
@@ -136,10 +137,19 @@ public sealed class TrayApp : IDisposable
             case Mifs.KeyMiUp: OnMiUp(); break;
             case Mifs.KeyProjection when value == 0: KeyActions.Projection(); break; // value 2 = слабый зарядник — пока пропуск
             case Mifs.KeySettings: KeyActions.OpenSettings(); break;
-            case Mifs.KeyAiDown: KeyActions.Copilot(); break;                        // 0x24 (отпускание) игнорируем
+            case Mifs.KeyAiDown: OnAiKey(); break;                                   // 0x24 (отпускание) игнорируем
             case Mifs.KeyMic: OnMicKey(value); break;
             case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
         }
+    }
+
+    // AI-клавиша: своя программа из config.json (AiKeyProgram/AiKeyArgs), иначе Copilot
+    private void OnAiKey()
+    {
+        if (!string.IsNullOrWhiteSpace(_cfg.AiKeyProgram))
+            KeyActions.Launch(_cfg.AiKeyProgram, _cfg.AiKeyArgs);
+        else
+            KeyActions.Copilot();
     }
 
     private void OnMicKey(byte value)
@@ -292,6 +302,7 @@ public sealed class TrayApp : IDisposable
 
     private static string? ModeKey(PerfMode m) => m switch
     {
+        PerfMode.Eco => "mode.eco",
         PerfMode.Quiet => "mode.quiet",
         PerfMode.Auto => "mode.auto",
         PerfMode.Turbo => "mode.turbo",
@@ -330,6 +341,7 @@ public sealed class TrayApp : IDisposable
 
     private static OsdKind ModeKind(PerfMode m) => m switch
     {
+        PerfMode.Eco => OsdKind.Eco,
         PerfMode.Quiet => OsdKind.Quiet,
         PerfMode.Auto => OsdKind.Auto,
         PerfMode.Turbo => OsdKind.Turbo,
@@ -337,8 +349,8 @@ public sealed class TrayApp : IDisposable
         _ => OsdKind.Auto,
     };
 
-    // порядок циклического переключения режимов
-    private static readonly PerfMode[] Cycle = { PerfMode.Quiet, PerfMode.Auto, PerfMode.Turbo, PerfMode.FullSpeed };
+    // порядок циклического переключения режимов (по нарастанию мощности)
+    private static readonly PerfMode[] Cycle = { PerfMode.Eco, PerfMode.Quiet, PerfMode.Auto, PerfMode.Turbo, PerfMode.FullSpeed };
 
     /// <summary>Переключить на следующий режим по кругу + OSD (для Fn+Mi / хоткея).</summary>
     private void CycleMode()

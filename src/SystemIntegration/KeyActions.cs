@@ -25,6 +25,22 @@ public static class KeyActions
         catch (Exception ex) { Log.Ex("KeyActions.OpenSettings", ex); /* URI-обработчик может отсутствовать */ }
     }
 
+    /// <summary>Запустить произвольную программу/файл/URL (для настраиваемой AI-клавиши).</summary>
+    public static void Launch(string path, string? args = null)
+    {
+        try
+        {
+            path = Environment.ExpandEnvironmentVariables(path.Trim());
+            var psi = new ProcessStartInfo(path) { UseShellExecute = true };
+            if (!string.IsNullOrWhiteSpace(args))
+                psi.Arguments = Environment.ExpandEnvironmentVariables(args);
+            if (File.Exists(path))
+                psi.WorkingDirectory = Path.GetDirectoryName(path);
+            Process.Start(psi);
+        }
+        catch (Exception ex) { Log.Ex("KeyActions.Launch", ex); }
+    }
+
     private static void WinCombo(byte vk)
     {
         keybd_event(VK_LWIN, 0, 0, UIntPtr.Zero);

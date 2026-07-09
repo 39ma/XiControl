@@ -22,6 +22,8 @@ public static class SvgIcons
     public const string MicOn = "mic-on";
     public const string MicOff = "mic-off";
     public const string PerfAuto = "perf-auto";
+    public const string PerfAutoDial = "perf-auto-dial";     // спидометр без стрелки
+    public const string PerfAutoNeedle = "perf-auto-needle"; // стрелка, пивот в центре
     public const string PerfEco = "perf-eco";
     public const string PerfFull = "perf-full";
     public const string PerfQuiet = "perf-quiet";
@@ -79,6 +81,35 @@ public static class SvgIcons
         }
         _bitmaps[key] = bmp;
         return bmp;
+    }
+
+    /// <summary>
+    /// Спидометр с поворачиваемой стрелкой: циферблат статично + стрелка под углом
+    /// angleDeg (0 = как в исходной иконке) вокруг центра. Для анимации «настройки».
+    /// </summary>
+    public static void DrawGauge(Graphics g, RectangleF r, float angleDeg, float opacity = 1f)
+    {
+        Draw(g, PerfAutoDial, r, opacity);
+
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var needle = Render(PerfAutoNeedle, size);
+        var state = g.Save();
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+        g.TranslateTransform(r.X + r.Width / 2f, r.Y + r.Height / 2f);
+        g.RotateTransform(angleDeg);
+        var dest = new Rectangle(-size / 2, -size / 2, size, size);
+        if (opacity >= 0.999f)
+        {
+            g.DrawImage(needle, dest);
+        }
+        else
+        {
+            using var attrs = new System.Drawing.Imaging.ImageAttributes();
+            attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = opacity });
+            g.DrawImage(needle, dest, 0, 0, needle.Width, needle.Height, GraphicsUnit.Pixel, attrs);
+        }
+        g.Restore(state);
     }
 
     /// <summary>Нарисовать иконку в прямоугольник с заданной непрозрачностью (для неактивных состояний).</summary>

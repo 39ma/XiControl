@@ -41,6 +41,16 @@ public sealed class QuickPanelForm : Form
     private bool _care;
     private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close
 
+    // hover-анимация ячеек режимов: прогресс 0..1 на ячейку (рост + проявление ~120 мс)
+    private const float HoverMs = 120f;
+    private readonly float[] _hoverT;
+    private readonly System.Windows.Forms.Timer _hoverAnim = new() { Interval = 15 };
+
+    // покачивание стрелки спидометра, пока курсор на ячейке «Авто»
+    private readonly System.Windows.Forms.Timer _gaugeAnim = new() { Interval = 30 };
+    private readonly int _autoIdx;
+    private float _gaugeT;
+
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
     public Action? Changed;
 
@@ -50,6 +60,16 @@ public sealed class QuickPanelForm : Form
         _cfg = cfg;
         _modes = cfg.EcoMode ? Modes : Modes.Where(t => t.mode != PerfMode.Eco).ToArray();
         _modeRects = new Rectangle[_modes.Length];
+        _hoverT = new float[_modes.Length];
+        _hoverAnim.Tick += (_, _) => StepHoverAnim();
+        _autoIdx = Array.FindIndex(_modes, t => t.mode == PerfMode.Auto);
+        _gaugeAnim.Tick += (_, _) =>
+        {
+            _gaugeT += 0.03f;
+            // гаснем, когда курсор ушёл и проявление ячейки докатилось до нуля
+            if (_hover != _autoIdx && _hoverT[_autoIdx] < 0.01f) { _gaugeAnim.Stop(); _gaugeT = 0f; }
+            Invalidate();
+        };
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -140,9 +160,31 @@ public sealed class QuickPanelForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         int h = HitTest(e.Location);
-        if (h != _hover) { _hover = h; Invalidate(); }
+        if (h != _hover)
+        {
+            _hover = h;
+            _hoverAnim.Start();
+            if (h == _autoIdx && _autoIdx >= 0) _gaugeAnim.Start();
+            Invalidate();
+        }
     }
-    protected override void OnMouseLeave(EventArgs e) { if (_hover != -1) { _hover = -1; Invalidate(); } }
+    protected override void OnMouseLeave(EventArgs e) { if (_hover != -1) { _hover = -1; _hoverAnim.Start(); Invalidate(); } }
+
+    // ведём прогресс каждой ячейки к цели (1 — под курсором, 0 — нет); таймер сам гаснет
+    private void StepHoverAnim()
+    {
+        const float step = 15f / HoverMs;
+        bool busy = false;
+        for (int i = 0; i < _hoverT.Length; i++)
+        {
+            float target = _hover == i ? 1f : 0f;
+            if (Math.Abs(_hoverT[i] - target) < 0.001f) continue;
+            _hoverT[i] = Math.Clamp(_hoverT[i] + Math.Sign(target - _hoverT[i]) * step, 0f, 1f);
+            if (Math.Abs(_hoverT[i] - target) > 0.001f) busy = true;
+        }
+        if (!busy) _hoverAnim.Stop();
+        Invalidate();
+    }
 
     protected override void OnMouseClick(MouseEventArgs e)
     {
@@ -205,9 +247,17 @@ public sealed class QuickPanelForm : Form
             bool hover = _hover == i;
             DrawCell(g, r, active, hover, _modes[i].accent, Sc(10));
 
-            var iconR = new RectangleF(r.X + (r.Width - Sc(40)) / 2f, r.Y + Sc(9), Sc(40), Sc(40));
-            // цветные SVG-иконки: активная/наведённая — в полный цвет, остальные приглушены
-            DrawModeIcon(g, _modes[i].mode, iconR, active ? 1f : (hover ? 0.85f : 0.45f));
+            // цветные SVG-иконки: активная — в полный цвет; hover плавно проявляет и подращивает
+            float t = _hoverT[i];
+            float grow = Sc(40) * 0.08f * t;
+            var iconR = new RectangleF(
+                r.X + (r.Width - Sc(40) - grow) / 2f, r.Y + Sc(9) - grow / 2f,
+                Sc(40) + grow, Sc(40) + grow);
+            float op = active ? 1f : 0.45f + 0.55f * t;
+            if (i == _autoIdx && _gaugeAnim.Enabled)
+                SvgIcons.DrawGauge(g, iconR, t * OsdForm.SweepAngle(_gaugeT), op);
+            else
+                DrawModeIcon(g, _modes[i].mode, iconR, op);
 
             TextRenderer.DrawText(g, Loc.T(_modes[i].key), labelFont,
                 new Rectangle(r.X + Sc(3), r.Bottom - Sc(38), r.Width - Sc(6), Sc(36)),
@@ -277,4 +327,10 @@ public sealed class QuickPanelForm : Form
 
     private static Color Blend(Color a, Color b, float t) => Color.FromArgb(
         (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { _hoverAnim.Dispose(); _gaugeAnim.Dispose(); }
+        base.Dispose(disposing);
+    }
 }

@@ -50,9 +50,21 @@ public sealed class OsdForm : Form
         _fade.Tick += (_, _) =>
         {
             Opacity -= 0.08;
-            if (Opacity <= 0.01) { _fade.Stop(); Hide(); }
+            if (Opacity <= 0.01) { _fade.Stop(); _gauge.Stop(); Hide(); }
         };
+        _gauge.Tick += (_, _) => { _gaugeT += 0.03f; Invalidate(); };
     }
+
+    // ---- «настройка» спидометра (Авто): медленный ход стрелки через всю шкалу ----
+    // Шкала циферблата: зелёный край ≈ +45° поворота стрелки, красный ≈ −115°;
+    // качаем синусом вокруг середины, старт из исходного положения стрелки.
+    private readonly System.Windows.Forms.Timer _gauge = new() { Interval = 30 };
+    private float _gaugeT;
+
+    internal static float SweepAngle(float t)
+        => -10f + 30f * MathF.Sin(0.34f + t * 1.4f); // мягкий ход ±30°, период ~4.5 с
+
+    private float NeedleAngle() => SweepAngle(_gaugeT);
 
     protected override bool ShowWithoutActivation => true;
 
@@ -104,6 +116,10 @@ public sealed class OsdForm : Form
 
         _display.Stop(); _fade.Stop();
         Opacity = 1.0;
+        _gauge.Stop();
+        // для «Авто» показываем дольше — стрелка успевает плавно «настроиться»
+        _display.Interval = kind == OsdKind.Auto ? 3400 : 2000;
+        if (kind == OsdKind.Auto) { _gaugeT = 0f; _gauge.Start(); }
         Invalidate();
         if (!Visible) Show();
         else BringToFront();
@@ -137,8 +153,13 @@ public sealed class OsdForm : Form
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
     }
 
-    private static void DrawIcon(Graphics g, OsdKind kind, RectangleF r)
+    private void DrawIcon(Graphics g, OsdKind kind, RectangleF r)
     {
+        if (kind == OsdKind.Auto)
+        {
+            SvgIcons.DrawGauge(g, r, NeedleAngle());
+            return;
+        }
         string name = kind switch
         {
             OsdKind.Charging        => SvgIcons.BatteryCharging,
@@ -166,7 +187,7 @@ public sealed class OsdForm : Form
     {
         if (disposing)
         {
-            _display.Dispose(); _fade.Dispose();
+            _display.Dispose(); _fade.Dispose(); _gauge.Dispose();
             _titleFont.Dispose(); _subFont.Dispose();
         }
         base.Dispose(disposing);

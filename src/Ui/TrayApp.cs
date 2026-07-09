@@ -287,6 +287,7 @@ public sealed class TrayApp : IDisposable
         var lang = new ToolStripMenuItem(Loc.T("menu.language"));
         lang.DropDownItems.Add(LangItem("Русский", Lang.Ru));
         lang.DropDownItems.Add(LangItem("English", Lang.En));
+        lang.DropDownItems.Add(LangItem("中文", Lang.Zh));
         TintDropDown(lang);
         _menu.Items.Add(lang);
 

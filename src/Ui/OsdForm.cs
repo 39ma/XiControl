@@ -119,7 +119,7 @@ public sealed class OsdForm : Form
         _gauge.Stop();
         // для «Авто» показываем дольше — стрелка успевает плавно «настроиться»
         _display.Interval = kind == OsdKind.Auto ? 3400 : 2000;
-        if (kind == OsdKind.Auto) { _gaugeT = 0f; _gauge.Start(); }
+        if (IsAnimated(kind)) { _gaugeT = 0f; _gauge.Start(); }
         Invalidate();
         if (!Visible) Show();
         else BringToFront();
@@ -153,12 +153,19 @@ public sealed class OsdForm : Form
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
     }
 
+    private static bool IsAnimated(OsdKind kind) => kind is
+        OsdKind.Auto or OsdKind.Quiet or OsdKind.Turbo or OsdKind.Full or OsdKind.Eco or OsdKind.Charging;
+
     private void DrawIcon(Graphics g, OsdKind kind, RectangleF r)
     {
-        if (kind == OsdKind.Auto)
+        switch (kind)
         {
-            SvgIcons.DrawGauge(g, r, NeedleAngle());
-            return;
+            case OsdKind.Auto:     SvgIcons.DrawGauge(g, r, NeedleAngle()); return;
+            case OsdKind.Quiet:    SvgIcons.DrawLeafSway(g, r, _gaugeT, 1f); return;
+            case OsdKind.Turbo:    SvgIcons.DrawBoltPulse(g, r, _gaugeT, 1f); return;
+            case OsdKind.Full:     SvgIcons.DrawRocket(g, r, _gaugeT, 1f); return;
+            case OsdKind.Eco:      SvgIcons.DrawMoonTwinkle(g, r, _gaugeT, 1f); return;
+            case OsdKind.Charging: SvgIcons.DrawChargingPulse(g, r, _gaugeT); return;
         }
         string name = kind switch
         {

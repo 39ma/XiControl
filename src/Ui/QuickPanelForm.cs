@@ -46,9 +46,8 @@ public sealed class QuickPanelForm : Form
     private readonly float[] _hoverT;
     private readonly System.Windows.Forms.Timer _hoverAnim = new() { Interval = 15 };
 
-    // покачивание стрелки спидометра, пока курсор на ячейке «Авто»
+    // анимация иконки, пока курсор на ячейке режима (стрелка, лист, пламя, звёзды...)
     private readonly System.Windows.Forms.Timer _gaugeAnim = new() { Interval = 30 };
-    private readonly int _autoIdx;
     private float _gaugeT;
 
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
@@ -62,14 +61,8 @@ public sealed class QuickPanelForm : Form
         _modeRects = new Rectangle[_modes.Length];
         _hoverT = new float[_modes.Length];
         _hoverAnim.Tick += (_, _) => StepHoverAnim();
-        _autoIdx = Array.FindIndex(_modes, t => t.mode == PerfMode.Auto);
-        _gaugeAnim.Tick += (_, _) =>
-        {
-            _gaugeT += 0.03f;
-            // гаснем, когда курсор ушёл и проявление ячейки докатилось до нуля
-            if (_hover != _autoIdx && _hoverT[_autoIdx] < 0.01f) { _gaugeAnim.Stop(); _gaugeT = 0f; }
-            Invalidate();
-        };
+        // работает всё время, пока панель видна: активная ячейка анимируется всегда
+        _gaugeAnim.Tick += (_, _) => { _gaugeT += 0.03f; Invalidate(); };
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -148,6 +141,13 @@ public sealed class QuickPanelForm : Form
         old?.Dispose(); // присваивание Region не освобождает прежний GDI-хэндл
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible) { _gaugeT = 0f; _gaugeAnim.Start(); }
+        else { _gaugeAnim.Stop(); }
+    }
+
     // ---- закрытие ----
     protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); Hide(); }
     protected override void OnKeyDown(KeyEventArgs e)
@@ -164,7 +164,6 @@ public sealed class QuickPanelForm : Form
         {
             _hover = h;
             _hoverAnim.Start();
-            if (h == _autoIdx && _autoIdx >= 0) _gaugeAnim.Start();
             Invalidate();
         }
     }
@@ -254,8 +253,10 @@ public sealed class QuickPanelForm : Form
                 r.X + (r.Width - Sc(40) - grow) / 2f, r.Y + Sc(9) - grow / 2f,
                 Sc(40) + grow, Sc(40) + grow);
             float op = active ? 1f : 0.45f + 0.55f * t;
-            if (i == _autoIdx && _gaugeAnim.Enabled)
-                SvgIcons.DrawGauge(g, iconR, t * OsdForm.SweepAngle(_gaugeT), op);
+            // активная ячейка «живёт» всегда, остальные — по мере наведения
+            float k = active ? 1f : t;
+            if (_gaugeAnim.Enabled && k > 0.01f)
+                DrawModeIconAnimated(g, _modes[i].mode, iconR, op, k);
             else
                 DrawModeIcon(g, _modes[i].mode, iconR, op);
 
@@ -282,6 +283,20 @@ public sealed class QuickPanelForm : Form
         {
             using var pen = new Pen(accent, 1.6f);
             g.DrawPath(pen, path);
+        }
+    }
+
+    // при наведении: та же иконка, но живая; k = прогресс hover (амплитуда вкатывается плавно)
+    private void DrawModeIconAnimated(Graphics g, PerfMode m, RectangleF r, float opacity, float k)
+    {
+        switch (m)
+        {
+            case PerfMode.Eco:       SvgIcons.DrawMoonTwinkle(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.Quiet:     SvgIcons.DrawLeafSway(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.Auto:      SvgIcons.DrawGauge(g, r, k * OsdForm.SweepAngle(_gaugeT), opacity); break;
+            case PerfMode.Turbo:     SvgIcons.DrawBoltPulse(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.FullSpeed: SvgIcons.DrawRocket(g, r, _gaugeT, k, opacity); break;
+            default:                 DrawModeIcon(g, m, r, opacity); break;
         }
     }
 

@@ -12,6 +12,8 @@ public static class SvgIcons
 {
     // OSD (цветные, 128×128)
     public const string BatteryCharging = "battery-charging";
+    public const string BatteryChargingBody = "battery-charging-body";
+    public const string BatteryChargingBolt = "battery-charging-bolt";
     public const string BatteryDischarge = "battery-discharge";
     public const string BatterySaverOn = "battery-saver-on";
     public const string BatterySaverOff = "battery-saver-off";
@@ -26,6 +28,11 @@ public static class SvgIcons
     public const string PerfAutoNeedle = "perf-auto-needle"; // стрелка, пивот в центре
     public const string PerfEco = "perf-eco";
     public const string PerfFull = "perf-full";
+    public const string PerfFullBody = "perf-full-body";     // ракета без пламени
+    public const string PerfFullFlame = "perf-full-flame";   // пламя отдельно
+    public const string PerfEcoMoon = "perf-eco-moon";       // луна без звёзд
+    public const string PerfEcoStar1 = "perf-eco-star1";     // звёзды по одной —
+    public const string PerfEcoStar2 = "perf-eco-star2";     //   мерцают в противофазе
     public const string PerfQuiet = "perf-quiet";
     public const string PerfTurbo = "perf-turbo";
     public const string Settings = "settings";
@@ -81,6 +88,95 @@ public static class SvgIcons
         }
         _bitmaps[key] = bmp;
         return bmp;
+    }
+
+    // ================= анимированные иконки =================
+    // t — время в секундах, k — амплитуда 0..1 (в панели растёт вместе с hover).
+    // Всё — трансформации кэшированных битмапов, кэш при анимации не растёт.
+
+    private static RectangleF CenteredDest(RectangleF r, int size) =>
+        new(r.X + (r.Width - size) / 2f, r.Y + (r.Height - size) / 2f, size, size);
+
+    private static void DrawBitmap(Graphics g, Bitmap bmp, RectangleF dest, float alpha = 1f, float brightness = 1f)
+    {
+        var pts = new[] { new PointF(dest.X, dest.Y), new PointF(dest.Right, dest.Y), new PointF(dest.X, dest.Bottom) };
+        var src = new RectangleF(0, 0, bmp.Width, bmp.Height);
+        if (alpha >= 0.999f && Math.Abs(brightness - 1f) < 0.001f)
+        {
+            g.DrawImage(bmp, pts, src, GraphicsUnit.Pixel);
+            return;
+        }
+        using var attrs = new System.Drawing.Imaging.ImageAttributes();
+        attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix
+        {
+            Matrix00 = brightness, Matrix11 = brightness, Matrix22 = brightness, Matrix33 = Math.Clamp(alpha, 0f, 1f),
+        });
+        g.DrawImage(bmp, pts, src, GraphicsUnit.Pixel, attrs);
+    }
+
+    /// <summary>Лист (Тихий): покачивание вокруг основания черешка, как от ветерка.</summary>
+    public static void DrawLeafSway(Graphics g, RectangleF r, float t, float k, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var dest = CenteredDest(r, size);
+        float ang = 4.5f * k * MathF.Sin(t * 1.5f);
+        float px = dest.X + dest.Width * 0.25f, py = dest.Y + dest.Height * 0.84f; // основание черешка
+        var st = g.Save();
+        g.TranslateTransform(px, py); g.RotateTransform(ang); g.TranslateTransform(-px, -py);
+        DrawBitmap(g, Render(PerfQuiet, size), dest, opacity);
+        g.Restore(st);
+    }
+
+    /// <summary>Молния (Турбо): пульсация яркости.</summary>
+    public static void DrawBoltPulse(Graphics g, RectangleF r, float t, float k, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        float b = 1f + 0.28f * k * (0.5f + 0.5f * MathF.Sin(t * 3.2f));
+        DrawBitmap(g, Render(PerfTurbo, size), CenteredDest(r, size), opacity, b);
+    }
+
+    /// <summary>Ракета (Полная): микротряска корпуса + подрагивающее пламя.</summary>
+    public static void DrawRocket(Graphics g, RectangleF r, float t, float k, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var dest = CenteredDest(r, size);
+
+        // пламя: пульс масштаба вокруг точки крепления к соплу + мерцание
+        float fs = 1f + 0.08f * k * MathF.Sin(t * 4.5f);
+        float fa = 1f - 0.18f * k * (0.5f + 0.5f * MathF.Sin(t * 6f + 1f));
+        float ax = dest.X + dest.Width * 0.375f, ay = dest.Y + dest.Height * 0.66f;
+        var st = g.Save();
+        g.TranslateTransform(ax, ay); g.ScaleTransform(fs, fs); g.TranslateTransform(-ax, -ay);
+        DrawBitmap(g, Render(PerfFullFlame, size), dest, opacity * fa);
+        g.Restore(st);
+
+        // корпус: едва заметное плавное покачивание
+        float sh = 0.006f * size * k;
+        var body = dest;
+        body.Offset(sh * MathF.Sin(t * 5f), sh * MathF.Sin(t * 7f + 2f));
+        DrawBitmap(g, Render(PerfFullBody, size), body, opacity);
+    }
+
+    /// <summary>Луна (Эко): звёзды мерцают в противофазе.</summary>
+    public static void DrawMoonTwinkle(Graphics g, RectangleF r, float t, float k, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var dest = CenteredDest(r, size);
+        DrawBitmap(g, Render(PerfEcoMoon, size), dest, opacity);
+        float a1 = 1f - 0.7f * k * (0.5f + 0.5f * MathF.Sin(t * 2.1f));
+        float a2 = 1f - 0.7f * k * (0.5f + 0.5f * MathF.Sin(t * 2.1f + 2.2f));
+        DrawBitmap(g, Render(PerfEcoStar1, size), dest, opacity * a1);
+        DrawBitmap(g, Render(PerfEcoStar2, size), dest, opacity * a2);
+    }
+
+    /// <summary>Батарея на зарядке: молния внутри мягко пульсирует.</summary>
+    public static void DrawChargingPulse(Graphics g, RectangleF r, float t, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var dest = CenteredDest(r, size);
+        DrawBitmap(g, Render(BatteryChargingBody, size), dest, opacity);
+        float a = 0.55f + 0.45f * (0.5f + 0.5f * MathF.Sin(t * 4.2f));
+        DrawBitmap(g, Render(BatteryChargingBolt, size), dest, opacity * a);
     }
 
     /// <summary>

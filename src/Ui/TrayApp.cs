@@ -27,8 +27,10 @@ public sealed class TrayApp : IDisposable
     private PerfMode? _iconMode;
     private bool _iconInit;
 
-    private readonly System.Windows.Forms.Timer _miHold = new() { Interval = 400 }; // порог «долгого» нажатия Mi
+    private readonly System.Windows.Forms.Timer _miHold = new() { Interval = 400 };  // порог «долгого» нажатия Mi
+    private readonly System.Windows.Forms.Timer _miClick = new() { Interval = 300 }; // окно ожидания двойного клика
     private bool _miHandled;
+    private int _miClicks;
 
     private static readonly (string key, PerfMode mode)[] Modes =
     [
@@ -39,18 +41,15 @@ public sealed class TrayApp : IDisposable
         ("mode.full",  PerfMode.FullSpeed),
     ];
 
-    // видимые режимы (Эко можно скрыть через config.json: "EcoMode": false)
-    private readonly (string key, PerfMode mode)[] _modes;
-    private readonly PerfMode[] _cycle; // порядок цикла Mi-кнопки — по нарастанию мощности
+    // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
+    private (string key, PerfMode mode)[] _modes = [];
+    private PerfMode[] _cycle = []; // порядок цикла Mi-кнопки — по нарастанию мощности
 
     public TrayApp(MifsClient mifs, AppConfig cfg)
     {
         _mifs = mifs;
         _cfg = cfg;
-        _modes = Modes.Where(m =>
-            (cfg.EcoMode || m.mode != PerfMode.Eco) &&
-            (cfg.FullSpeedMode || m.mode != PerfMode.FullSpeed)).ToArray();
-        _cycle = _modes.Select(m => m.mode).ToArray();
+        ApplyModeVisibility();
 
         // пока показываем состояние из конфига; реальное уточняем в фоне —
         // schtasks /query может блокировать до 10 с, старту это ни к чему
@@ -84,6 +83,7 @@ public sealed class TrayApp : IDisposable
         _panel = new QuickPanelForm(_mifs, _cfg);
         _panel.Changed = () => UpdateTrayIcon();
         _miHold.Tick += (_, _) => OnMiHold();
+        _miClick.Tick += (_, _) => OnMiClickTimeout();
         _events.KeyPressed += OnKey;
         _events.Start();
 
@@ -103,6 +103,14 @@ public sealed class TrayApp : IDisposable
         _iconInit = true;
         _iconMode = mode;
         try { _tray.Icon = TrayIcons.ForMode(mode, _lightTaskbar); } catch { }
+    }
+
+    private void ApplyModeVisibility()
+    {
+        _modes = Modes.Where(m =>
+            (_cfg.EcoMode || m.mode != PerfMode.Eco) &&
+            (_cfg.FullSpeedMode || m.mode != PerfMode.FullSpeed)).ToArray();
+        _cycle = _modes.Select(m => m.mode).ToArray();
     }
 
     private void ApplyMenuTheme()
@@ -151,8 +159,17 @@ public sealed class TrayApp : IDisposable
         }
     }
 
-    // Клавиша «Настройки»: переключение лимита заряда 80% ↔ 100% (+OSD внутри ToggleCare)
+    // Клавиша «Настройки»: по умолчанию заряд 80↔100; "SettingsKey": "settings" → Параметры Windows
     private void OnSettingsKey()
+    {
+        if (string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase))
+            KeyActions.OpenSettings();
+        else
+            ToggleCharge();
+    }
+
+    // Переключить лимит заряда на противоположный (OSD/панель — внутри ToggleCare)
+    private void ToggleCharge()
         => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
 
     // AI-клавиша: своя программа из config.json (AiKeyProgram/AiKeyArgs), иначе Copilot
@@ -197,12 +214,44 @@ public sealed class TrayApp : IDisposable
         _miHold.Start();
     }
 
+    // Жесты Mi: одинарный клик (после окна двойного) / двойной клик / удержание.
+    // По умолчанию: одинарный — цикл режимов, двойной — заряд 80/100;
+    // "MiShortPress": "charge" инвертирует одинарный и двойной.
+    private bool MiChargeFirst => string.Equals(_cfg.MiShortPress, "charge", StringComparison.OrdinalIgnoreCase);
+
     private void OnMiUp()
     {
         _miHold.Stop();
-        if (_miHandled) return;
-        _miHandled = true;
-        CycleMode();           // короткое нажатие → следующий режим + OSD
+        if (_miHandled) { _miClicks = 0; return; }
+
+        // двойной клик отключён — одинарный без задержки
+        if (!_cfg.MiDoubleClick)
+        {
+            if (MiChargeFirst) ToggleCharge(); else CycleMode();
+            return;
+        }
+
+        _miClicks++;
+        _miClick.Stop();
+        if (_miClicks >= 2)
+        {
+            _miClicks = 0;
+            if (MiChargeFirst) CycleMode(); else ToggleCharge(); // двойной клик
+        }
+        else
+        {
+            _miClick.Start(); // ждём: не начало ли это двойного
+        }
+    }
+
+    private void OnMiClickTimeout()
+    {
+        _miClick.Stop();
+        if (_miClicks == 1)
+        {
+            if (MiChargeFirst) ToggleCharge(); else CycleMode(); // одинарный клик
+        }
+        _miClicks = 0;
     }
 
     private void OnMiHold()
@@ -210,6 +259,8 @@ public sealed class TrayApp : IDisposable
         _miHold.Stop();
         if (_miHandled) return;
         _miHandled = true;
+        _miClick.Stop();
+        _miClicks = 0;
         _panel.Toggle();       // удержание → панель
     }
 
@@ -285,18 +336,51 @@ public sealed class TrayApp : IDisposable
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        // --- Язык (подменю) ---
+        // --- Настройки (подменю: язык, автозапуск) ---
+        var settings = new ToolStripMenuItem(Loc.T("menu.settings"));
+
         var lang = new ToolStripMenuItem(Loc.T("menu.language"));
         lang.DropDownItems.Add(LangItem("Русский", Lang.Ru));
         lang.DropDownItems.Add(LangItem("English", Lang.En));
         lang.DropDownItems.Add(LangItem("中文", Lang.Zh));
         TintDropDown(lang);
-        _menu.Items.Add(lang);
+        settings.DropDownItems.Add(lang);
 
-        // --- Автозапуск ---
         var autostart = new ToolStripMenuItem(Loc.T("menu.autostart")) { Checked = _autoStart };
         autostart.Click += (_, _) => ToggleAutoStart(!_autoStart);
-        _menu.Items.Add(autostart);
+        settings.DropDownItems.Add(autostart);
+
+        settings.DropDownItems.Add(new ToolStripSeparator());
+
+        // видимость опциональных режимов — применяется сразу, без перезапуска
+        var showEco = new ToolStripMenuItem(Loc.T("menu.show.eco")) { Checked = _cfg.EcoMode };
+        showEco.Click += (_, _) => ToggleModeVisibility(eco: !_cfg.EcoMode, full: _cfg.FullSpeedMode);
+        settings.DropDownItems.Add(showEco);
+
+        var showFull = new ToolStripMenuItem(Loc.T("menu.show.full")) { Checked = _cfg.FullSpeedMode };
+        showFull.Click += (_, _) => ToggleModeVisibility(eco: _cfg.EcoMode, full: !_cfg.FullSpeedMode);
+        settings.DropDownItems.Add(showFull);
+
+        settings.DropDownItems.Add(new ToolStripSeparator());
+
+        // раскладка Mi-кнопки: галочка = клик переключает режимы (двойной — заряд), снята = наоборот
+        var miPerf = new ToolStripMenuItem(Loc.T("menu.mi.perf")) { Checked = !MiChargeFirst };
+        miPerf.Click += (_, _) => { _cfg.MiShortPress = MiChargeFirst ? "modes" : "charge"; _cfg.Save(); };
+        settings.DropDownItems.Add(miPerf);
+
+        // двойной клик Mi: снята — жест отключён, зато одинарный мгновенный
+        var miDouble = new ToolStripMenuItem(Loc.T("menu.mi.double")) { Checked = _cfg.MiDoubleClick };
+        miDouble.Click += (_, _) => { _cfg.MiDoubleClick = !_cfg.MiDoubleClick; _cfg.Save(); };
+        settings.DropDownItems.Add(miDouble);
+
+        // клавиша «настройки»: галочка — заряд 80/100, снята — Параметры Windows
+        bool keyCharge = !string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase);
+        var keyMode = new ToolStripMenuItem(Loc.T("menu.key.charge")) { Checked = keyCharge };
+        keyMode.Click += (_, _) => { _cfg.SettingsKey = keyCharge ? "settings" : "charge"; _cfg.Save(); };
+        settings.DropDownItems.Add(keyMode);
+
+        TintDropDown(settings);
+        _menu.Items.Add(settings);
 
         _menu.Items.Add(new ToolStripSeparator());
 
@@ -379,6 +463,15 @@ public sealed class TrayApp : IDisposable
         UpdateTrayIcon();
     }
 
+    private void ToggleModeVisibility(bool eco, bool full)
+    {
+        _cfg.EcoMode = eco;
+        _cfg.FullSpeedMode = full;
+        _cfg.Save();
+        ApplyModeVisibility();
+        _panel.ReloadModes();
+    }
+
     private void ToggleAutoStart(bool on)
     {
         Safe(() => { AutoStart.Set(on); return true; }, false);
@@ -400,6 +493,7 @@ public sealed class TrayApp : IDisposable
         SystemEvents.UserPreferenceChanged -= OnUserPref;
         _iconTimer.Dispose();
         _miHold.Dispose();
+        _miClick.Dispose();
         _events.Dispose();
         _guard.Dispose();
         _osd.Dispose();

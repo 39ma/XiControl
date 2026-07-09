@@ -22,19 +22,20 @@ public sealed class QuickPanelForm : Form
 
     private static readonly (PerfMode mode, string key, Color accent)[] Modes =
     {
-        (PerfMode.Eco,       "mode.eco",   Color.FromArgb(144, 164, 174)),
+        (PerfMode.Eco,       "mode.eco",   Color.FromArgb(125, 160, 185)), // сизый
         (PerfMode.Quiet,     "mode.quiet", Green),
         (PerfMode.Auto,      "mode.auto",  Blue),
         (PerfMode.Turbo,     "mode.turbo", Orange),
-        (PerfMode.FullSpeed, "mode.full",  Orange),
+        (PerfMode.FullSpeed, "mode.full",  Color.FromArgb(255, 82, 82)),  // красный
+
     };
 
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
 
-    // видимые режимы (Эко скрывается через config.json: "EcoMode": false)
-    private readonly (PerfMode mode, string key, Color accent)[] _modes;
-    private readonly Rectangle[] _modeRects;
+    // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
+    private (PerfMode mode, string key, Color accent)[] _modes = [];
+    private Rectangle[] _modeRects = [];
     private Rectangle _care80, _care100, _close;
 
     private PerfMode? _mode;
@@ -43,7 +44,7 @@ public sealed class QuickPanelForm : Form
 
     // hover-анимация ячеек режимов: прогресс 0..1 на ячейку (рост + проявление ~120 мс)
     private const float HoverMs = 120f;
-    private readonly float[] _hoverT;
+    private float[] _hoverT = [];
     private readonly System.Windows.Forms.Timer _hoverAnim = new() { Interval = 15 };
 
     // анимация иконки, пока курсор на ячейке режима (стрелка, лист, пламя, звёзды...)
@@ -57,11 +58,7 @@ public sealed class QuickPanelForm : Form
     {
         _mifs = mifs;
         _cfg = cfg;
-        _modes = Modes.Where(t =>
-            (cfg.EcoMode || t.mode != PerfMode.Eco) &&
-            (cfg.FullSpeedMode || t.mode != PerfMode.FullSpeed)).ToArray();
-        _modeRects = new Rectangle[_modes.Length];
-        _hoverT = new float[_modes.Length];
+        ReloadModes();
         _hoverAnim.Tick += (_, _) => StepHoverAnim();
         // работает всё время, пока панель видна: активная ячейка анимируется всегда
         _gaugeAnim.Tick += (_, _) => { _gaugeT += 0.03f; Invalidate(); };
@@ -106,6 +103,18 @@ public sealed class QuickPanelForm : Form
     {
         try { _mode = _mifs.GetPerfMode(); } catch { _mode = null; }
         try { _care = _mifs.GetChargeCare(); } catch { _care = _cfg.ChargeCare; }
+    }
+
+    /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
+    public void ReloadModes()
+    {
+        _modes = Modes.Where(t =>
+            (_cfg.EcoMode || t.mode != PerfMode.Eco) &&
+            (_cfg.FullSpeedMode || t.mode != PerfMode.FullSpeed)).ToArray();
+        _modeRects = new Rectangle[_modes.Length];
+        _hoverT = new float[_modes.Length];
+        _hover = -1;
+        if (Visible) { RefreshState(); DoLayout(); Invalidate(); }
     }
 
     /// <summary>Перечитать состояние и перерисовать (режим сменили извне, напр. Mi-кнопкой).</summary>

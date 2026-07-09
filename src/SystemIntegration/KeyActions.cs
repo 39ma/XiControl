@@ -18,6 +18,13 @@ public static class KeyActions
     /// <summary>Нейропомощник — открыть Windows Copilot (Win+C).</summary>
     public static void Copilot() => WinCombo(VK_C);
 
+    /// <summary>Открыть Параметры Windows (опция "SettingsKey": "settings").</summary>
+    public static void OpenSettings()
+    {
+        try { Process.Start(new ProcessStartInfo("ms-settings:") { UseShellExecute = true }); }
+        catch (Exception ex) { Log.Ex("KeyActions.OpenSettings", ex); /* URI-обработчик может отсутствовать */ }
+    }
+
     /// <summary>Запустить произвольную программу/файл/URL (для настраиваемой AI-клавиши).</summary>
     public static void Launch(string path, string? args = null)
     {

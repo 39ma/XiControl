@@ -24,6 +24,25 @@ public sealed class AppConfig
     public bool FullSpeedMode { get; set; } = true;
 
     /// <summary>
+    /// Действие клавиши «настройки»: "charge" (по умолчанию) — переключение заряда
+    /// 80/100, "settings" — открыть Параметры Windows (как в ранних версиях).
+    /// </summary>
+    public string? SettingsKey { get; set; }
+
+    /// <summary>
+    /// Раскладка кликов Mi-кнопки. "modes" (по умолчанию): одинарный — цикл режимов,
+    /// двойной — заряд 80/100. "charge" — инверсия: одинарный — заряд, двойной — режимы.
+    /// Удержание всегда открывает панель.
+    /// </summary>
+    public string? MiShortPress { get; set; }
+
+    /// <summary>
+    /// Двойной клик Mi-кнопки. false — жест отключён, одинарный клик срабатывает
+    /// мгновенно (без окна ожидания ~300 мс).
+    /// </summary>
+    public bool MiDoubleClick { get; set; } = true;
+
+    /// <summary>
     /// Что запускать AI-клавишей: путь к exe/файлу/URL (поддерживаются %ПЕРЕМЕННЫЕ%).
     /// Пусто → Copilot (Win+C). Настраивается только правкой config.json.
     /// </summary>

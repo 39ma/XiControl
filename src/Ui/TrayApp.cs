@@ -338,8 +338,11 @@ public sealed class TrayApp : IDisposable
         Safe(() => { _mifs.SetChargeCare(on); return true; }, false);
         _cfg.ChargeCare = on;
         _cfg.Save();
-        _osd.Flash(on ? OsdKind.CareOn : OsdKind.CareOff,
-                   on ? Loc.T("osd.care.on") : Loc.T("osd.care.off"));
+        if (_panel.Visible)
+            _panel.RefreshUi(); // панель открыта: пилюля 80/100 переключается в ней, OSD не нужен
+        else
+            _osd.Flash(on ? OsdKind.CareOn : OsdKind.CareOff,
+                       on ? Loc.T("osd.care.on") : Loc.T("osd.care.off"));
     }
 
     private void SetMode(PerfMode mode, string key)

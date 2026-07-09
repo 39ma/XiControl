@@ -18,6 +18,12 @@ public sealed class AppConfig
     public bool EcoMode { get; set; } = true;
 
     /// <summary>
+    /// Показывать режим «Полная мощность» (0x04). false — режим убирается из UI
+    /// и включить его из приложения нельзя. Только правкой config.json (перезапуск).
+    /// </summary>
+    public bool FullSpeedMode { get; set; } = true;
+
+    /// <summary>
     /// Что запускать AI-клавишей: путь к exe/файлу/URL (поддерживаются %ПЕРЕМЕННЫЕ%).
     /// Пусто → Copilot (Win+C). Настраивается только правкой config.json.
     /// </summary>

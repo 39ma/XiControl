@@ -57,7 +57,9 @@ public sealed class QuickPanelForm : Form
     {
         _mifs = mifs;
         _cfg = cfg;
-        _modes = cfg.EcoMode ? Modes : Modes.Where(t => t.mode != PerfMode.Eco).ToArray();
+        _modes = Modes.Where(t =>
+            (cfg.EcoMode || t.mode != PerfMode.Eco) &&
+            (cfg.FullSpeedMode || t.mode != PerfMode.FullSpeed)).ToArray();
         _modeRects = new Rectangle[_modes.Length];
         _hoverT = new float[_modes.Length];
         _hoverAnim.Tick += (_, _) => StepHoverAnim();

@@ -47,7 +47,9 @@ public sealed class TrayApp : IDisposable
     {
         _mifs = mifs;
         _cfg = cfg;
-        _modes = cfg.EcoMode ? Modes : Modes.Where(m => m.mode != PerfMode.Eco).ToArray();
+        _modes = Modes.Where(m =>
+            (cfg.EcoMode || m.mode != PerfMode.Eco) &&
+            (cfg.FullSpeedMode || m.mode != PerfMode.FullSpeed)).ToArray();
         _cycle = _modes.Select(m => m.mode).ToArray();
 
         // пока показываем состояние из конфига; реальное уточняем в фоне —

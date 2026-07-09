@@ -32,7 +32,9 @@ public sealed class QuickPanelForm : Form
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
 
-    private readonly Rectangle[] _modeRects = new Rectangle[Modes.Length];
+    // видимые режимы (Эко скрывается через config.json: "EcoMode": false)
+    private readonly (PerfMode mode, string key, Color accent)[] _modes;
+    private readonly Rectangle[] _modeRects;
     private Rectangle _care80, _care100, _close;
 
     private PerfMode? _mode;
@@ -46,6 +48,8 @@ public sealed class QuickPanelForm : Form
     {
         _mifs = mifs;
         _cfg = cfg;
+        _modes = cfg.EcoMode ? Modes : Modes.Where(t => t.mode != PerfMode.Eco).ToArray();
+        _modeRects = new Rectangle[_modes.Length];
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -91,7 +95,7 @@ public sealed class QuickPanelForm : Form
 
     private void DoLayout()
     {
-        int n = Modes.Length;
+        int n = _modes.Length;
         int p = Sc(16), header = Sc(28), cellW = Sc(84), cellH = Sc(94), gap = Sc(8);
         int content = cellW * n + gap * (n - 1);
         int width = content + p * 2;
@@ -137,9 +141,9 @@ public sealed class QuickPanelForm : Form
     {
         int h = HitTest(e.Location);
         if (h == 12) { Hide(); return; }
-        if (h >= 0 && h < Modes.Length)
+        if (h >= 0 && h < _modes.Length)
         {
-            try { _mifs.SetPerfMode(Modes[h].mode); } catch { }
+            try { _mifs.SetPerfMode(_modes[h].mode); } catch { }
             RefreshState();
             Invalidate();
             Changed?.Invoke();
@@ -157,7 +161,7 @@ public sealed class QuickPanelForm : Form
     private int HitTest(Point pt)
     {
         if (_close.Contains(pt)) return 12;
-        for (int i = 0; i < Modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
+        for (int i = 0; i < _modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
         return -1;
@@ -187,18 +191,18 @@ public sealed class QuickPanelForm : Form
         DrawClose(g, _close, _hover == 12);
 
         // режимы
-        for (int i = 0; i < Modes.Length; i++)
+        for (int i = 0; i < _modes.Length; i++)
         {
             var r = _modeRects[i];
-            bool active = _mode == Modes[i].mode;
+            bool active = _mode == _modes[i].mode;
             bool hover = _hover == i;
-            DrawCell(g, r, active, hover, Modes[i].accent, Sc(10));
+            DrawCell(g, r, active, hover, _modes[i].accent, Sc(10));
 
             var iconR = new RectangleF(r.X + (r.Width - Sc(40)) / 2f, r.Y + Sc(9), Sc(40), Sc(40));
             // цветные SVG-иконки: активная/наведённая — в полный цвет, остальные приглушены
-            DrawModeIcon(g, Modes[i].mode, iconR, active ? 1f : (hover ? 0.85f : 0.45f));
+            DrawModeIcon(g, _modes[i].mode, iconR, active ? 1f : (hover ? 0.85f : 0.45f));
 
-            TextRenderer.DrawText(g, Loc.T(Modes[i].key), labelFont,
+            TextRenderer.DrawText(g, Loc.T(_modes[i].key), labelFont,
                 new Rectangle(r.X + Sc(3), r.Bottom - Sc(38), r.Width - Sc(6), Sc(36)),
                 active ? TextCol : DimCol,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);

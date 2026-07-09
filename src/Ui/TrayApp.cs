@@ -39,10 +39,16 @@ public sealed class TrayApp : IDisposable
         ("mode.full",  PerfMode.FullSpeed),
     ];
 
+    // видимые режимы (Эко можно скрыть через config.json: "EcoMode": false)
+    private readonly (string key, PerfMode mode)[] _modes;
+    private readonly PerfMode[] _cycle; // порядок цикла Mi-кнопки — по нарастанию мощности
+
     public TrayApp(MifsClient mifs, AppConfig cfg)
     {
         _mifs = mifs;
         _cfg = cfg;
+        _modes = cfg.EcoMode ? Modes : Modes.Where(m => m.mode != PerfMode.Eco).ToArray();
+        _cycle = _modes.Select(m => m.mode).ToArray();
 
         // пока показываем состояние из конфига; реальное уточняем в фоне —
         // schtasks /query может блокировать до 10 с, старту это ни к чему
@@ -266,7 +272,7 @@ public sealed class TrayApp : IDisposable
         PerfMode? current = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
         string currentName = current is PerfMode cm && ModeKey(cm) is string mk ? Loc.T(mk) : "—";
         var perf = new ToolStripMenuItem($"{Loc.T("menu.perf")}:  {currentName}");
-        foreach (var (key, mode) in Modes)
+        foreach (var (key, mode) in _modes)
         {
             var item = new ToolStripMenuItem(Loc.T(key)) { Checked = current == mode };
             item.Click += (_, _) => SetMode(mode, key);
@@ -353,15 +359,12 @@ public sealed class TrayApp : IDisposable
         _ => OsdKind.Auto,
     };
 
-    // порядок циклического переключения режимов (по нарастанию мощности)
-    private static readonly PerfMode[] Cycle = { PerfMode.Eco, PerfMode.Quiet, PerfMode.Auto, PerfMode.Turbo, PerfMode.FullSpeed };
-
     /// <summary>Переключить на следующий режим по кругу + OSD (для Fn+Mi / хоткея).</summary>
     private void CycleMode()
     {
         var cur = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null) ?? PerfMode.Auto;
-        int idx = Array.IndexOf(Cycle, cur);
-        var next = Cycle[(idx < 0 ? 0 : idx + 1) % Cycle.Length];
+        int idx = Array.IndexOf(_cycle, cur);
+        var next = _cycle[(idx < 0 ? 0 : idx + 1) % _cycle.Length];
         Safe(() => _mifs.SetPerfMode(next), false);
         _osd.Flash(ModeKind(next), Loc.T(ModeKey(next) ?? "mode.auto"));
         UpdateTrayIcon();

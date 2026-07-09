@@ -12,6 +12,12 @@ public sealed class AppConfig
     public bool AutoStart { get; set; } = false;
 
     /// <summary>
+    /// Показывать скрытый режим Эко (0x0A) в меню, панели и цикле Mi-кнопки.
+    /// Настраивается только правкой config.json (перезапуск).
+    /// </summary>
+    public bool EcoMode { get; set; } = true;
+
+    /// <summary>
     /// Что запускать AI-клавишей: путь к exe/файлу/URL (поддерживаются %ПЕРЕМЕННЫЕ%).
     /// Пусто → Copilot (Win+C). Настраивается только правкой config.json.
     /// </summary>

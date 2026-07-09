@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>IconPreview</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- для рендера/сверки сгенерированного SVG -->
+    <PackageReference Include="Svg" Version="3.4.7" />
+  </ItemGroup>
+
+</Project>

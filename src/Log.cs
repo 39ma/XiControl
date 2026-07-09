@@ -1,0 +1,29 @@
+namespace XiControl;
+
+/// <summary>
+/// Мини-лог в %APPDATA%\XiControl\log.txt — чтобы «у кого-то не работает»
+/// можно было разобрать без отладчика. Ошибки самого лога глотаются.
+/// </summary>
+internal static class Log
+{
+    private static readonly object Sync = new();
+    private static readonly string LogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "XiControl", "log.txt");
+
+    public static void Ex(string where, Exception ex) => Write($"{where}: {ex.GetType().Name}: {ex.Message}");
+
+    public static void Write(string message)
+    {
+        try
+        {
+            lock (Sync)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 256 * 1024)
+                    File.Delete(LogPath); // простая ротация: начать заново
+                File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
+            }
+        }
+        catch { /* лог не должен ронять приложение */ }
+    }
+}

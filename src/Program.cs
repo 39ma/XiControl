@@ -1,0 +1,40 @@
+using XiControl.Config;
+using XiControl.Localization;
+using XiControl.Ui;
+using XiControl.Wmi;
+
+namespace XiControl;
+
+static class Program
+{
+    [STAThread]
+    static void Main()
+    {
+        // единственный экземпляр
+        using var mutex = new Mutex(true, @"Global\XiControlMutex", out bool created);
+        if (!created) return;
+
+        ApplicationConfiguration.Initialize();
+
+        var cfg = AppConfig.Load();
+        Loc.Current = cfg.Language;
+
+        MifsClient mifs;
+        try
+        {
+            mifs = new MifsClient();
+        }
+        catch (Exception ex)
+        {
+            Log.Ex("Startup", ex);
+            MessageBox.Show(
+                Loc.T("err.noiface") + "\n\n" + ex.Message,
+                Loc.T("err.title"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        using var tray = new TrayApp(mifs, cfg);
+        Application.Run();
+        mifs.Dispose();
+    }
+}

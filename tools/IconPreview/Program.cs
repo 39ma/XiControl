@@ -1,0 +1,199 @@
+using System.Drawing.Imaging;
+using System.Drawing.Text;
+using XiControl.Ui;
+
+// Режим "svg": сгенерировать SVG-лист иконок и отрендерить его для сверки.
+if (args.Length > 0 && args[0] == "svg")
+{
+    string svgOut = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\reference\icons-sheet.svg";
+    string pngOut = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\reference\svg-preview.png";
+    string svg = SvgGen.BuildSheet();
+    File.WriteAllText(svgOut, svg);
+    var doc = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(svg);
+    using (var rb = doc.Draw())
+        rb.Save(pngOut, ImageFormat.Png);
+    Console.WriteLine("svg:  " + svgOut);
+    Console.WriteLine("png:  " + pngOut);
+    return;
+}
+
+// Режим "one <svg-path> [size]": отрендерить один SVG (белым на тёмном) для отладки.
+if (args.Length > 1 && args[0] == "one")
+{
+    int oneSize = args.Length > 2 ? int.Parse(args[2]) : 128;
+    string t = File.ReadAllText(args[1]).Replace("currentColor", "#F0F0F0");
+    var d1 = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(t);
+    d1.Width = oneSize; d1.Height = oneSize;
+    using var b1 = new Bitmap(oneSize, oneSize);
+    using (var g1 = Graphics.FromImage(b1))
+    {
+        g1.Clear(Color.FromArgb(28, 28, 30));
+        g1.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        d1.Draw(g1);
+    }
+    string onePath = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\reference\one-icon.png";
+    b1.Save(onePath, ImageFormat.Png);
+    Console.WriteLine("saved: " + onePath);
+    return;
+}
+
+// Режим "ico": собрать app.ico из settings.svg (PNG-вложения 16..256, формат Vista+).
+if (args.Length > 0 && args[0] == "ico")
+{
+    string svgPath = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\assets\svg\osd\settings.svg";
+    string icoPath = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\src\app.ico";
+    int[] sizes = { 16, 24, 32, 48, 64, 128, 256 };
+
+    var doc0 = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(File.ReadAllText(svgPath));
+    var pngs = new List<byte[]>();
+    foreach (int s in sizes)
+    {
+        doc0.Width = s; doc0.Height = s;
+        using var b = new Bitmap(s, s);
+        using (var g = Graphics.FromImage(b))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            doc0.Draw(g);
+        }
+        using var ms = new MemoryStream();
+        b.Save(ms, ImageFormat.Png);
+        pngs.Add(ms.ToArray());
+    }
+
+    using var fs = new FileStream(icoPath, FileMode.Create);
+    using var w = new BinaryWriter(fs);
+    w.Write((ushort)0); w.Write((ushort)1); w.Write((ushort)sizes.Length); // ICONDIR
+    int offset = 6 + 16 * sizes.Length;
+    for (int i = 0; i < sizes.Length; i++) // ICONDIRENTRY
+    {
+        int s = sizes[i];
+        w.Write((byte)(s >= 256 ? 0 : s)); w.Write((byte)(s >= 256 ? 0 : s));
+        w.Write((byte)0); w.Write((byte)0);       // палитра, резерв
+        w.Write((ushort)1); w.Write((ushort)32);  // planes, bpp
+        w.Write(pngs[i].Length); w.Write(offset);
+        offset += pngs[i].Length;
+    }
+    foreach (var p in pngs) w.Write(p);
+    Console.WriteLine("saved: " + icoPath);
+    return;
+}
+
+// Режим "user": отрендерить пользовательские SVG-ассеты (assets/svg) в сетку для проверки Svg.NET.
+if (args.Length > 0 && args[0] == "user")
+{
+    string root = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\assets\svg";
+    var osdFiles = Directory.GetFiles(Path.Combine(root, "osd"), "*.svg").OrderBy(f => f).ToArray();
+    var trayFiles = Directory.GetFiles(Path.Combine(root, "tray"), "*.svg").OrderBy(f => f).ToArray();
+
+    Bitmap RenderSvg(string path, int size, Color? recolor)
+    {
+        string text = File.ReadAllText(path);
+        if (recolor is Color c)
+            text = text.Replace("currentColor", $"#{c.R:X2}{c.G:X2}{c.B:X2}");
+        var d = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(text);
+        d.Width = size; d.Height = size;
+        var b = new Bitmap(size, size);
+        using var g = Graphics.FromImage(b);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        d.Draw(g);
+        return b;
+    }
+
+    int uCols = 4, uTileW = 190, uTileH = 140;
+    int uRows = (osdFiles.Length + uCols - 1) / uCols + 1; // +1 ряд под трей
+    using var sheet = new Bitmap(uCols * uTileW, uRows * uTileH);
+    using (var g = Graphics.FromImage(sheet))
+    {
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        g.Clear(Color.FromArgb(28, 28, 30));
+        using var f = new Font("Segoe UI", 9);
+        using var br = new SolidBrush(Color.FromArgb(240, 240, 240));
+        using var pen = new Pen(Color.FromArgb(55, 55, 58));
+
+        for (int i = 0; i < osdFiles.Length; i++)
+        {
+            int cx = (i % uCols) * uTileW, cy = (i / uCols) * uTileH;
+            g.DrawRectangle(pen, cx, cy, uTileW, uTileH);
+            using (var img = RenderSvg(osdFiles[i], 96, null))
+                g.DrawImage(img, cx + 14, cy + 10);
+            g.DrawString(Path.GetFileNameWithoutExtension(osdFiles[i]), f, br, cx + 10, cy + uTileH - 24);
+        }
+        // трей: белым на тёмном, размеры 16/24/40
+        int ty = ((osdFiles.Length + uCols - 1) / uCols) * uTileH;
+        for (int i = 0; i < trayFiles.Length; i++)
+        {
+            int cx = i * uTileW;
+            g.DrawRectangle(pen, cx, ty, uTileW, uTileH);
+            var trayColor = Color.FromArgb(240, 240, 240);
+            using (var i40 = RenderSvg(trayFiles[i], 40, trayColor)) g.DrawImage(i40, cx + 14, ty + 20);
+            using (var i24 = RenderSvg(trayFiles[i], 24, trayColor)) g.DrawImage(i24, cx + 70, ty + 28);
+            using (var i16 = RenderSvg(trayFiles[i], 16, trayColor)) g.DrawImage(i16, cx + 110, ty + 32);
+            g.DrawString(Path.GetFileNameWithoutExtension(trayFiles[i]), f, br, cx + 10, ty + uTileH - 24);
+        }
+    }
+    string userOut = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\reference\user-icons-preview.png";
+    sheet.Save(userOut, ImageFormat.Png);
+    Console.WriteLine("saved: " + userOut);
+    return;
+}
+
+// Рендерит все иконки в PNG-сетку (тёмный фон, как OSD/трей) для визуальной проверки.
+
+var white = Color.FromArgb(240, 240, 240);
+var green = Color.FromArgb(52, 199, 89);
+var blue = Color.FromArgb(90, 170, 255);
+var orange = Color.FromArgb(255, 149, 0);
+var amber = Color.FromArgb(230, 190, 70);
+var gray = Color.FromArgb(150, 150, 155);
+var red = Color.FromArgb(255, 90, 90);
+var card = Color.FromArgb(28, 28, 30);
+
+var items = new (string name, Action<Graphics, RectangleF> draw)[]
+{
+    ("Тихий · mode-quiet",        (g, r) => Icons.Leaf(g, r, green)),
+    ("Авто · mode-auto",          (g, r) => Icons.Gauge(g, r, blue)),
+    ("Турбо · mode-turbo",        (g, r) => Icons.Bolt(g, r, orange, true)),
+    ("Полная · mode-full",        (g, r) => Icons.DoubleBolt(g, r, orange)),
+    ("База · app",                (g, r) => Icons.Toggles(g, r, white)),
+    ("Микрофон · mic",            (g, r) => Icons.Mic(g, r, green, false)),
+    ("Мик.выкл · mic-muted",      (g, r) => Icons.Mic(g, r, gray, true)),
+    ("Подсветка · keyboard-light",(g, r) => Icons.Keyboard(g, r, blue)),
+    ("Зарядка · battery-charging",(g, r) => { Icons.Battery(g, r, green, 0.8f); Icons.BoltOverlay(g, r, Color.White, card); }),
+    ("От батареи · battery",      (g, r) => Icons.Battery(g, r, amber, 0.6f)),
+    ("Беречь вкл · battery-care", (g, r) => { Icons.Battery(g, r, green, 0.8f); Icons.LeafOverlay(g, r, card); }),
+    ("Беречь выкл · battery-off", (g, r) => { Icons.Battery(g, r, gray, 0.95f); Icons.Slash(g, r, red); }),
+};
+
+int cols = 3, big = 96, small = 28;
+int tileW = 240, tileH = 150;
+int rows = (items.Length + cols - 1) / cols;
+int W = cols * tileW, H = rows * tileH;
+
+using var bmp = new Bitmap(W, H);
+using (var g = Graphics.FromImage(bmp))
+{
+    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+    g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+    g.Clear(card);
+    using var labelFont = new Font("Segoe UI", 10);
+    using var labelBrush = new SolidBrush(white);
+    using var gridPen = new Pen(Color.FromArgb(55, 55, 58));
+
+    for (int i = 0; i < items.Length; i++)
+    {
+        int cx = (i % cols) * tileW, cy = (i / cols) * tileH;
+        g.DrawRectangle(gridPen, cx, cy, tileW, tileH);
+
+        // крупная версия
+        items[i].draw(g, new RectangleF(cx + 20, cy + 18, big, big));
+        // мелкая (как в трее)
+        items[i].draw(g, new RectangleF(cx + 140, cy + 30, small, small));
+        g.DrawRectangle(gridPen, cx + 140, cy + 30, small, small);
+
+        g.DrawString(items[i].name, labelFont, labelBrush, cx + 14, cy + tileH - 26);
+    }
+}
+
+string outPath = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\reference\icon-preview.png";
+bmp.Save(outPath, ImageFormat.Png);
+Console.WriteLine("saved: " + outPath);

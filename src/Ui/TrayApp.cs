@@ -366,7 +366,10 @@ public sealed class TrayApp : IDisposable
         int idx = Array.IndexOf(_cycle, cur);
         var next = _cycle[(idx < 0 ? 0 : idx + 1) % _cycle.Length];
         Safe(() => _mifs.SetPerfMode(next), false);
-        _osd.Flash(ModeKind(next), Loc.T(ModeKey(next) ?? "mode.auto"));
+        if (_panel.Visible)
+            _panel.RefreshUi(); // панель открыта: выбор «перелистывается» в ней, OSD не нужен
+        else
+            _osd.Flash(ModeKind(next), Loc.T(ModeKey(next) ?? "mode.auto"));
         UpdateTrayIcon();
     }
 

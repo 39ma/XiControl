@@ -93,6 +93,13 @@ public sealed class QuickPanelForm : Form
         try { _care = _mifs.GetChargeCare(); } catch { _care = _cfg.ChargeCare; }
     }
 
+    /// <summary>Перечитать состояние и перерисовать (режим сменили извне, напр. Mi-кнопкой).</summary>
+    public void RefreshUi()
+    {
+        RefreshState();
+        Invalidate();
+    }
+
     private void DoLayout()
     {
         int n = _modes.Length;

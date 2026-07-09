@@ -136,12 +136,16 @@ public sealed class TrayApp : IDisposable
             case Mifs.KeyMiDown: OnMiDown(); break;
             case Mifs.KeyMiUp: OnMiUp(); break;
             case Mifs.KeyProjection when value == 0: KeyActions.Projection(); break; // value 2 = слабый зарядник — пока пропуск
-            case Mifs.KeySettings: KeyActions.OpenSettings(); break;
+            case Mifs.KeySettings: OnSettingsKey(); break; // одиночное событие, удержание не ловится
             case Mifs.KeyAiDown: OnAiKey(); break;                                   // 0x24 (отпускание) игнорируем
             case Mifs.KeyMic: OnMicKey(value); break;
             case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
         }
     }
+
+    // Клавиша «Настройки»: переключение лимита заряда 80% ↔ 100% (+OSD внутри ToggleCare)
+    private void OnSettingsKey()
+        => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
 
     // AI-клавиша: своя программа из config.json (AiKeyProgram/AiKeyArgs), иначе Copilot
     private void OnAiKey()

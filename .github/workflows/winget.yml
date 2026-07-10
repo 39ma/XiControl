@@ -1,0 +1,30 @@
+# Автообновление пакета в winget: при публикации релиза открывает PR
+# в microsoft/winget-pkgs с новой версией (через WinGet Releaser / Komac).
+# Крутится на раннерах GitHub Actions — свой сервер не нужен.
+#
+# Требуется один раз:
+#   1. Классический PAT с правом public_repo → секрет репозитория WINGET_TOKEN.
+#   2. Форк https://github.com/microsoft/winget-pkgs на своём аккаунте.
+#   3. Первая версия пакета уже должна быть принята в winget-pkgs (ручной PR).
+name: winget
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+    steps:
+      - name: Publish to winget
+        if: env.HAS_TOKEN == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: Oksion.XiControl
+          installers-regex: '-win-x64\.exe$' # только самодостаточный exe (без -net8)
+          token: ${{ secrets.WINGET_TOKEN }}
+      - name: No token — skip
+        if: env.HAS_TOKEN != 'true'
+        run: echo "Секрет WINGET_TOKEN не задан — публикация в winget пропущена."

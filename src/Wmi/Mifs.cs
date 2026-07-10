@@ -42,6 +42,7 @@ public static class Mifs
     public const byte KeySettings = 0x1B;     // клавиша «Настройки»
     public const byte KeyAiDown = 0x23;       // нейропомощник (нажатие)
     public const byte KeyAiUp = 0x24;         // нейропомощник (отпускание)
+    public const byte KeyFnLock = 0x07;       // Fn-Lock (Fn+Esc): value = новое состояние 0/1
 
     /// <summary>Фиксированный порог прошивки для «беречь батарею» на этой модели.</summary>
     public const int ChargeThresholdPercent = 80;

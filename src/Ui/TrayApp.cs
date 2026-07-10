@@ -156,6 +156,7 @@ public sealed class TrayApp : IDisposable
             case Mifs.KeyAiDown: OnAiKey(); break;                                   // 0x24 (отпускание) игнорируем
             case Mifs.KeyMic: OnMicKey(value); break;
             case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
+            case Mifs.KeyFnLock: OnFnLockKey(value); break;
         }
     }
 
@@ -188,6 +189,15 @@ public sealed class TrayApp : IDisposable
         using (var mic = new MicControl())
             if (mic.Available) mic.SetMute(mute);
         _osd.Flash(mute ? OsdKind.MicOff : OsdKind.MicOn, Loc.T(mute ? "osd.mic.off" : "osd.mic.on"));
+    }
+
+    // Fn-Lock переключает сама прошивка, событие сообщает новое состояние — показываем OSD.
+    // value=1 (замок закрыт) = классические F1–F12, мультимедиа отключены (проверено на TM2424).
+    private void OnFnLockKey(byte value)
+    {
+        bool on = value != 0;
+        _osd.Flash(on ? OsdKind.FnLockOn : OsdKind.FnLockOff,
+                   Loc.T("osd.fnlock"), Loc.T(on ? "osd.fnlock.on" : "osd.fnlock.off"));
     }
 
     private void OnBacklightKey(byte value)

@@ -42,6 +42,9 @@ public static class Loc
         ["osd.backlight.level"]  = ["{0}%", "{0}%", "{0}%"],
         ["osd.off"]              = ["Выключено", "Off", "已关闭"],
         ["osd.auto"]             = ["Авто", "Auto", "自动"],
+        ["osd.fnlock"]           = ["Fn-Lock", "Fn-Lock", "Fn 锁定"],
+        ["osd.fnlock.on"]        = ["Классические F1–F12", "Function keys F1–F12", "F1–F12 功能键"],
+        ["osd.fnlock.off"]       = ["Мультимедийные клавиши", "Media keys", "多媒体按键"],
 
         ["err.title"]   = ["Ошибка", "Error", "错误"],
         ["err.noiface"] = [

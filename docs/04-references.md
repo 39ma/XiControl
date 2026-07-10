@@ -26,6 +26,15 @@
 - Отсюда: GUID'ы, коды функций GPU-mode/fan/kb-brightness/AC-type/CPU-temp, подтверждение operation 250/251.
 - ⚠️ Нумерация режимов производительности расходится с Windows-реверсом — доверяем MIControl.
 
+## tongfang-mifs-control-userspace (Python, Linux)
+
+- https://github.com/cubewhy/tongfang-mifs-control-userspace (MIT)
+- Тот же транспорт (GUID `B60BFB48…`, буфер 32 байта, op 250/251, ACPI `\_SB.PCI0.WMID.WMAA`),
+  но **таблица функций игровой линейки** (Tongfang / Redmi G): GPU-mux, RGB-клавиатура,
+  вентиляторы (обороты, макс. режим по типам CPU/SYS), температура, TPLock=12, FnLock=11.
+- Подтверждает: у MIFS минимум две таблицы функций по линейкам; наша (Bitland, тонкие) — другая.
+- Бонус: в комментариях — заводские диапазоны оборотов кулеров по режимам (Intel/AMD).
+
 ## GUID'ы (WMI, Bitland MIFS)
 
 | Назначение | GUID |

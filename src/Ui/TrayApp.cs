@@ -74,6 +74,11 @@ public sealed class TrayApp : IDisposable
         _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare);
         _guard.Reapply();
 
+        // «Режим совы»: восстановить после сбоя, включить заново, либо погасить, если фичу отключили
+        if (_cfg.Awake && !_cfg.OwlMode) { AwakeMode.Disable(_cfg); _cfg.Awake = false; _cfg.Save(); }
+        else if (_cfg.Awake) { AwakeMode.Enable(_cfg); _cfg.Save(); }
+        else if (_cfg.AwakeSavedLidAc is not null) { AwakeMode.Disable(_cfg); _cfg.Save(); }
+
         // OSD на смену питания
         _ = _osd.Handle; // форсируем создание хэндла для маршалинга событий в UI-поток
         _lastOnline = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
@@ -332,6 +337,14 @@ public sealed class TrayApp : IDisposable
         charge.Click += (_, _) => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
         _menu.Items.Add(charge);
 
+        // --- Режим совы (не спать) — если фича не скрыта конфигом ---
+        if (_cfg.OwlMode)
+        {
+            var owl = new ToolStripMenuItem(Loc.T("menu.owl")) { Checked = _cfg.Awake };
+            owl.Click += (_, _) => ToggleAwake();
+            _menu.Items.Add(owl);
+        }
+
         // --- Режим (подменю) ---
         PerfMode? current = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
         string currentName = current is PerfMode cm && ModeKey(cm) is string mk ? Loc.T(mk) : "—";
@@ -389,6 +402,11 @@ public sealed class TrayApp : IDisposable
         var keyMode = new ToolStripMenuItem(Loc.T("menu.key.charge")) { Checked = keyCharge };
         keyMode.Click += (_, _) => { _cfg.SettingsKey = keyCharge ? "settings" : "charge"; _cfg.Save(); };
         settings.DropDownItems.Add(keyMode);
+
+        // видимость «режима совы» как фичи (сова в панели + пункт меню)
+        var owlEnable = new ToolStripMenuItem(Loc.T("menu.owl.enable")) { Checked = _cfg.OwlMode };
+        owlEnable.Click += (_, _) => ToggleOwlFeature(!_cfg.OwlMode);
+        settings.DropDownItems.Add(owlEnable);
 
         TintDropDown(settings);
         _menu.Items.Add(settings);
@@ -483,6 +501,24 @@ public sealed class TrayApp : IDisposable
         _panel.ReloadModes();
     }
 
+    // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится
+    private void ToggleOwlFeature(bool on)
+    {
+        _cfg.OwlMode = on;
+        if (!on && _cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
+        _cfg.Save();
+        _panel.ReloadModes(); // перестроить раскладку панели (сова появляется/уходит)
+    }
+
+    // «Режим совы»: включить/выключить «не спать» (панель обновится, если открыта)
+    private void ToggleAwake()
+    {
+        if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
+        else if (AwakeMode.Enable(_cfg)) { _cfg.Awake = true; }
+        _cfg.Save();
+        if (_panel.Visible) _panel.RefreshUi();
+    }
+
     private void ToggleAutoStart(bool on)
     {
         Safe(() => { AutoStart.Set(on); return true; }, false);
@@ -500,6 +536,10 @@ public sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
+        // вернуть действие крышки; сам флаг Awake в конфиге не трогаем —
+        // при следующем запуске режим включится снова
+        if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Save(); }
+
         SystemEvents.PowerModeChanged -= OnPower;
         SystemEvents.UserPreferenceChanged -= OnUserPref;
         _iconTimer.Dispose();

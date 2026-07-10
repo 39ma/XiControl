@@ -2,6 +2,7 @@ using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using XiControl.Config;
 using XiControl.Localization;
+using XiControl.SystemIntegration;
 using XiControl.Wmi;
 
 namespace XiControl.Ui;
@@ -37,7 +38,7 @@ public sealed class QuickPanelForm : Form
     // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
     private (PerfMode mode, string key, Color accent)[] _modes = [];
     private Rectangle[] _modeRects = [];
-    private Rectangle _care80, _care100, _close;
+    private Rectangle _care80, _care100, _awake, _close;
 
     private PerfMode? _mode;
     private bool _care;
@@ -148,9 +149,13 @@ public sealed class QuickPanelForm : Form
         for (int i = 0; i < n; i++)
             _modeRects[i] = new Rectangle(p + i * (cellW + gap), modeY, cellW, cellH);
 
-        int half = (content - gap) / 2;
+        // справа от пилюль заряда — ячейка-переключатель «Не спать» (сова), если фича включена
+        int owlW = _cfg.OwlMode ? Sc(56) : 0;
+        int pillsW = _cfg.OwlMode ? content - owlW - gap : content;
+        int half = (pillsW - gap) / 2;
         _care80 = new Rectangle(p, pillsY, half, pillsH);
         _care100 = new Rectangle(p + half + gap, pillsY, half, pillsH);
+        _awake = _cfg.OwlMode ? new Rectangle(p + pillsW + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
 
         Size = new Size(width, height);
@@ -237,6 +242,14 @@ public sealed class QuickPanelForm : Form
             RefreshState();
             Invalidate();
         }
+        else if (h == 13)
+        {
+            // «Не спать»: экран/сон + крышка на AC (см. AwakeMode)
+            if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
+            else if (AwakeMode.Enable(_cfg)) { _cfg.Awake = true; }
+            _cfg.Save();
+            Invalidate();
+        }
     }
 
     private int HitTest(Point pt)
@@ -245,6 +258,7 @@ public sealed class QuickPanelForm : Form
         for (int i = 0; i < _modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
+        if (!_awake.IsEmpty && _awake.Contains(pt)) return 13;
         return -1;
     }
 
@@ -294,12 +308,25 @@ public sealed class QuickPanelForm : Form
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         }
 
-        // заряд
+        // заряд (заголовок слева) + «Не спать» (заголовок справа, над совой)
         TextRenderer.DrawText(g, Loc.T("panel.charge"), CapFont,
             new Rectangle(Sc(16), _care80.Y - Sc(20), Width, Sc(18)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
-
         DrawPill(g, _care80, "80%", _care, _hover == 10, Green, PillFont);
         DrawPill(g, _care100, "100%", !_care, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
+
+        // сова: ячейка в стиле режимов, бодрая при включённом «Не спать»
+        if (!_awake.IsEmpty)
+        {
+            TextRenderer.DrawText(g, Loc.T("panel.awake"), CapFont,
+                new Rectangle(0, _awake.Y - Sc(20), _awake.Right, Sc(18)), DimCol, TextFormatFlags.Right | TextFormatFlags.Top);
+
+            DrawCell(g, _awake, _cfg.Awake, _hover == 13, Blue, Sc(10));
+            float owlIcon = Math.Min(_awake.Width, _awake.Height) - Sc(8);
+            SvgIcons.Draw(g,
+                _cfg.Awake ? SvgIcons.OwlAwake : SvgIcons.OwlAsleep,
+                new RectangleF(_awake.X + (_awake.Width - owlIcon) / 2f, _awake.Y + (_awake.Height - owlIcon) / 2f, owlIcon, owlIcon),
+                _cfg.Awake || _hover == 13 ? 1f : 0.6f);
+        }
     }
 
     private static void DrawCell(Graphics g, Rectangle r, bool active, bool hover, Color accent, int corner)

@@ -23,12 +23,15 @@ public static class Loc
         ["menu.mi.perf"]    = ["Клик Mi — производительность", "Mi click: performance", "Mi 单击切换性能"],
         ["menu.mi.double"]  = ["Двойной клик Mi", "Mi double click", "Mi 双击"],
         ["menu.key.charge"] = ["Клавиша настроек — заряд", "Settings key: charge", "设置键切换充电"],
+        ["menu.owl"]        = ["Режим совы (не спать)", "Owl mode (keep awake)", "猫头鹰模式（保持唤醒）"],
+        ["menu.owl.enable"] = ["Включить режим совы", "Enable owl mode", "启用猫头鹰模式"],
         ["menu.language"]   = ["Язык", "Language", "语言"],
         ["menu.autostart"]  = ["Запускать с Windows", "Start with Windows", "开机自启动"],
         ["menu.exit"]       = ["Выход", "Exit", "退出"],
 
         ["panel.title"]     = ["Быстрые настройки", "Quick settings", "快速设置"],
         ["panel.charge"]    = ["Заряд батареи", "Battery charge", "电池充电"],
+        ["panel.awake"]     = ["Не спать", "Keep awake", "保持唤醒"],
 
         ["osd.charging"]         = ["Зарядка", "Charging", "充电中"],
         ["osd.charging.limited"] = ["Зарядка до {0}%", "Charging to {0}%", "充电至 {0}%"],

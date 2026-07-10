@@ -24,6 +24,18 @@ public sealed class AppConfig
     public bool FullSpeedMode { get; set; } = true;
 
     /// <summary>
+    /// «Режим совы» как фича: показывать ячейку в панели и пункт меню.
+    /// false — скрыть полностью (и выключить активный режим при старте).
+    /// </summary>
+    public bool OwlMode { get; set; } = true;
+
+    /// <summary>Режим «Не спать» активен: экран не гаснет, сна нет; крышка на AC — «ничего не делать».</summary>
+    public bool Awake { get; set; } = false;
+
+    /// <summary>Исходное действие крышки (AC) до включения «Не спать» — для восстановления, в т.ч. после сбоя.</summary>
+    public int? AwakeSavedLidAc { get; set; }
+
+    /// <summary>
     /// Действие клавиши «настройки»: "charge" (по умолчанию) — переключение заряда
     /// 80/100, "settings" — открыть Параметры Windows (как в ранних версиях).
     /// </summary>

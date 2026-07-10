@@ -17,6 +17,91 @@ if (args.Length > 0 && args[0] == "svg")
     return;
 }
 
+// Режим "bench": стоимость операций кадра анимации (панель/OSD) в микросекундах.
+if (args.Length > 0 && args[0] == "bench")
+{
+    string root = @"C:\Users\Mi\Project\Xiaomi-CoreCharge\xi_control\assets\svg\osd";
+    Bitmap Load(string name, int size)
+    {
+        var d = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(File.ReadAllText(Path.Combine(root, name + ".svg")));
+        d.Width = size; d.Height = size;
+        var b = new Bitmap(size, size);
+        using var g = Graphics.FromImage(b);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        d.Draw(g);
+        return b;
+    }
+    using var icon40 = Load("perf-auto-dial", 40);
+    using var needle40 = Load("perf-auto-needle", 40);
+    using var icon64 = Load("perf-auto-dial", 64);
+
+    using var canvas = new Bitmap(484, 230);
+    using var g2 = Graphics.FromImage(canvas);
+    g2.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+    g2.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+    using var cachedFont = new Font("Segoe UI", 9f);
+
+    double Bench(string label, int iters, Action a)
+    {
+        a(); // прогрев
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < iters; i++) a();
+        sw.Stop();
+        double us = sw.Elapsed.TotalMilliseconds * 1000.0 / iters;
+        Console.WriteLine($"{label,-42} {us,8:F1} мкс");
+        return us;
+    }
+
+    Console.WriteLine("=== стоимость операций (мкс за операцию) ===");
+    double fCreate = Bench("создание+dispose 4 шрифтов", 2000, () =>
+    {
+        using var f1 = new Font("Segoe UI Semibold", 11f);
+        using var f2 = new Font("Segoe UI", 8.5f);
+        using var f3 = new Font("Segoe UI", 9f);
+        using var f4 = new Font("Segoe UI Semibold", 11f);
+    });
+    double clear = Bench("clear + скруглённая рамка", 2000, () =>
+    {
+        g2.Clear(Color.FromArgb(28, 28, 30));
+        using var pen = new Pen(Color.FromArgb(70, 70, 74));
+        using var path = XiControl.Ui.Icons.Rounded(new RectangleF(0, 0, 483, 229), 18);
+        g2.DrawPath(pen, path);
+    });
+    double icons = Bench("5 иконок 40px c ColorMatrix", 2000, () =>
+    {
+        using var attrs = new System.Drawing.Imaging.ImageAttributes();
+        attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = 0.7f });
+        for (int i = 0; i < 5; i++)
+            g2.DrawImage(icon40, new Rectangle(20 + i * 90, 50, 40, 40), 0, 0, 40, 40, GraphicsUnit.Pixel, attrs);
+    });
+    double rot = Bench("поворот стрелки (save/rotate/draw)", 2000, () =>
+    {
+        var st = g2.Save();
+        g2.TranslateTransform(40, 70); g2.RotateTransform(23f);
+        g2.DrawImage(needle40, new Rectangle(-20, -20, 40, 40));
+        g2.Restore(st);
+    });
+    double text = Bench("6 надписей TextRenderer", 2000, () =>
+    {
+        for (int i = 0; i < 6; i++)
+            TextRenderer.DrawText(g2, "Полная мощность", cachedFont, new Rectangle(10 + i * 75, 150, 80, 40), Color.White, TextFormatFlags.HorizontalCenter);
+    });
+    double osdIcon = Bench("иконка OSD 64px + поворот", 2000, () =>
+    {
+        var st = g2.Save();
+        g2.TranslateTransform(240, 100); g2.RotateTransform(-15f);
+        g2.DrawImage(icon64, new Rectangle(-32, -32, 64, 64));
+        g2.Restore(st);
+    });
+
+    double frame = fCreate + clear + icons + rot + text;
+    Console.WriteLine();
+    Console.WriteLine($"кадр панели сейчас:  ~{frame:F0} мкс  → при 33 fps ≈ {frame * 33 / 10000:F2}% одного ядра");
+    Console.WriteLine($"без пересоздания шрифтов: ~{frame - fCreate:F0} мкс → ≈ {(frame - fCreate) * 33 / 10000:F2}% одного ядра");
+    Console.WriteLine($"кадр OSD: ~{clear + osdIcon + text / 3:F0} мкс");
+    return;
+}
+
 // Режим "one <svg-path> [size]": отрендерить один SVG (белым на тёмном) для отладки.
 if (args.Length > 1 && args[0] == "one")
 {

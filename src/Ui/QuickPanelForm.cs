@@ -43,14 +43,18 @@ public sealed class QuickPanelForm : Form
     private bool _care;
     private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close
 
-    // hover-анимация ячеек режимов: прогресс 0..1 на ячейку (рост + проявление ~120 мс)
+    // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
+    // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
     private const float HoverMs = 120f;
+    private readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
     private float[] _hoverT = [];
-    private readonly System.Windows.Forms.Timer _hoverAnim = new() { Interval = 15 };
-
-    // анимация иконки, пока курсор на ячейке режима (стрелка, лист, пламя, звёзды...)
-    private readonly System.Windows.Forms.Timer _gaugeAnim = new() { Interval = 30 };
     private float _gaugeT;
+
+    // шрифты общие на всё время жизни (в OnPaint не создаём)
+    private static readonly Font TitleFont = new("Segoe UI Semibold", 11f);
+    private static readonly Font LabelFont = new("Segoe UI", 8.5f);
+    private static readonly Font CapFont = new("Segoe UI", 9f);
+    private static readonly Font PillFont = new("Segoe UI Semibold", 11f);
 
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
     public Action? Changed;
@@ -60,9 +64,12 @@ public sealed class QuickPanelForm : Form
         _mifs = mifs;
         _cfg = cfg;
         ReloadModes();
-        _hoverAnim.Tick += (_, _) => StepHoverAnim();
-        // работает всё время, пока панель видна: активная ячейка анимируется всегда
-        _gaugeAnim.Tick += (_, _) => { _gaugeT += 0.03f; Invalidate(); };
+        _anim.Tick += (_, _) =>
+        {
+            _gaugeT += 0.015f;
+            StepHoverAnim();
+            Invalidate();
+        };
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -166,12 +173,13 @@ public sealed class QuickPanelForm : Form
         if (Visible)
         {
             _gaugeT = 0f;
-            _gaugeAnim.Start();
-            RegisterHotKey(Handle, HkEscId, 0, VK_ESCAPE);
+            _anim.Start();
+            if (!RegisterHotKey(Handle, HkEscId, 0, VK_ESCAPE))
+                Log.Write("QuickPanel: RegisterHotKey(Esc) не удалась — Esc занят другим приложением");
         }
         else
         {
-            _gaugeAnim.Stop();
+            _anim.Stop();
             UnregisterHotKey(Handle, HkEscId);
         }
     }
@@ -194,29 +202,20 @@ public sealed class QuickPanelForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         int h = HitTest(e.Location);
-        if (h != _hover)
-        {
-            _hover = h;
-            _hoverAnim.Start();
-            Invalidate();
-        }
+        if (h != _hover) { _hover = h; Invalidate(); }
     }
-    protected override void OnMouseLeave(EventArgs e) { if (_hover != -1) { _hover = -1; _hoverAnim.Start(); Invalidate(); } }
+    protected override void OnMouseLeave(EventArgs e) { if (_hover != -1) { _hover = -1; Invalidate(); } }
 
-    // ведём прогресс каждой ячейки к цели (1 — под курсором, 0 — нет); таймер сам гаснет
+    // ведём прогресс каждой ячейки к цели (1 — под курсором, 0 — нет)
     private void StepHoverAnim()
     {
         const float step = 15f / HoverMs;
-        bool busy = false;
         for (int i = 0; i < _hoverT.Length; i++)
         {
             float target = _hover == i ? 1f : 0f;
             if (Math.Abs(_hoverT[i] - target) < 0.001f) continue;
             _hoverT[i] = Math.Clamp(_hoverT[i] + Math.Sign(target - _hoverT[i]) * step, 0f, 1f);
-            if (Math.Abs(_hoverT[i] - target) > 0.001f) busy = true;
         }
-        if (!busy) _hoverAnim.Stop();
-        Invalidate();
     }
 
     protected override void OnMouseClick(MouseEventArgs e)
@@ -261,12 +260,7 @@ public sealed class QuickPanelForm : Form
         using (var path = Draw.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Sc(18)))
             g.DrawPath(pen, path);
 
-        using var titleFont = new Font("Segoe UI Semibold", 11f);
-        using var labelFont = new Font("Segoe UI", 8.5f);
-        using var capFont = new Font("Segoe UI", 9f);
-        using var pillFont = new Font("Segoe UI Semibold", 11f);
-
-        TextRenderer.DrawText(g, Loc.T("panel.title"), titleFont,
+        TextRenderer.DrawText(g, Loc.T("panel.title"), TitleFont,
             new Rectangle(Sc(16), Sc(12), Width, Sc(22)), TextCol, TextFormatFlags.Left | TextFormatFlags.Top);
 
         // крестик
@@ -289,23 +283,23 @@ public sealed class QuickPanelForm : Form
             float op = active ? 1f : 0.45f + 0.55f * t;
             // активная ячейка «живёт» всегда, остальные — по мере наведения
             float k = active ? 1f : t;
-            if (_gaugeAnim.Enabled && k > 0.01f)
+            if (_anim.Enabled && k > 0.01f)
                 DrawModeIconAnimated(g, _modes[i].mode, iconR, op, k);
             else
                 DrawModeIcon(g, _modes[i].mode, iconR, op);
 
-            TextRenderer.DrawText(g, Loc.T(_modes[i].key), labelFont,
+            TextRenderer.DrawText(g, Loc.T(_modes[i].key), LabelFont,
                 new Rectangle(r.X + Sc(3), r.Bottom - Sc(38), r.Width - Sc(6), Sc(36)),
                 active ? TextCol : DimCol,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         }
 
         // заряд
-        TextRenderer.DrawText(g, Loc.T("panel.charge"), capFont,
+        TextRenderer.DrawText(g, Loc.T("panel.charge"), CapFont,
             new Rectangle(Sc(16), _care80.Y - Sc(20), Width, Sc(18)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
 
-        DrawPill(g, _care80, "80%", _care, _hover == 10, Green, pillFont);
-        DrawPill(g, _care100, "100%", !_care, _hover == 11, Color.FromArgb(120, 120, 125), pillFont);
+        DrawPill(g, _care80, "80%", _care, _hover == 10, Green, PillFont);
+        DrawPill(g, _care100, "100%", !_care, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
     }
 
     private static void DrawCell(Graphics g, Rectangle r, bool active, bool hover, Color accent, int corner)
@@ -379,7 +373,7 @@ public sealed class QuickPanelForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _hoverAnim.Dispose(); _gaugeAnim.Dispose(); }
+        if (disposing) _anim.Dispose();
         base.Dispose(disposing);
     }
 }

@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using XiControl.Config;
 using XiControl.Localization;
 using XiControl.Wmi;
@@ -152,11 +153,33 @@ public sealed class QuickPanelForm : Form
         old?.Dispose(); // присваивание Region не освобождает прежний GDI-хэндл
     }
 
+    // Esc как системный хоткей на время показа: панель открывается из события WMI-клавиши,
+    // и Windows может не отдать ей фокус — обычный KeyDown тогда не приходит.
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+    private const int WM_HOTKEY = 0x0312, HkEscId = 1;
+    private const uint VK_ESCAPE = 0x1B;
+
     protected override void OnVisibleChanged(EventArgs e)
     {
         base.OnVisibleChanged(e);
-        if (Visible) { _gaugeT = 0f; _gaugeAnim.Start(); }
-        else { _gaugeAnim.Stop(); }
+        if (Visible)
+        {
+            _gaugeT = 0f;
+            _gaugeAnim.Start();
+            RegisterHotKey(Handle, HkEscId, 0, VK_ESCAPE);
+        }
+        else
+        {
+            _gaugeAnim.Stop();
+            UnregisterHotKey(Handle, HkEscId);
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_HOTKEY && (int)m.WParam == HkEscId) { Hide(); return; }
+        base.WndProc(ref m);
     }
 
     // ---- закрытие ----

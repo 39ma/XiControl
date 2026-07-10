@@ -87,6 +87,7 @@ public sealed class TrayApp : IDisposable
         // Панель по Mi-кнопке + слушатель клавиш прошивки
         _panel = new QuickPanelForm(_mifs, _cfg);
         _panel.Changed = () => UpdateTrayIcon();
+        _panel.MonitorRequested = ShowMonitor;
         _miHold.Tick += (_, _) => OnMiHold();
         _miClick.Tick += (_, _) => OnMiClickTimeout();
         _events.KeyPressed += OnKey;

@@ -38,11 +38,11 @@ public sealed class QuickPanelForm : Form
     // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
     private (PerfMode mode, string key, Color accent)[] _modes = [];
     private Rectangle[] _modeRects = [];
-    private Rectangle _care80, _care100, _awake, _close;
+    private Rectangle _care80, _care100, _awake, _close, _monBtn;
 
     private PerfMode? _mode;
     private bool _care;
-    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close
+    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор
 
     // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
     // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
@@ -59,6 +59,9 @@ public sealed class QuickPanelForm : Form
 
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
     public Action? Changed;
+
+    /// <summary>Кнопка-график слева от крестика: открыть окно «Монитор» (владелец — трей).</summary>
+    public Action? MonitorRequested;
 
     public QuickPanelForm(MifsClient mifs, AppConfig cfg)
     {
@@ -157,6 +160,7 @@ public sealed class QuickPanelForm : Form
         _care100 = new Rectangle(p + half + gap, pillsY, half, pillsH);
         _awake = _cfg.OwlMode ? new Rectangle(p + pillsW + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
+        _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
 
         Size = new Size(width, height);
         var old = Region;
@@ -227,6 +231,7 @@ public sealed class QuickPanelForm : Form
     {
         int h = HitTest(e.Location);
         if (h == 12) { Hide(); return; }
+        if (h == 14) { MonitorRequested?.Invoke(); return; }
         if (h >= 0 && h < _modes.Length)
         {
             try { _mifs.SetPerfMode(_modes[h].mode); } catch { }
@@ -255,6 +260,7 @@ public sealed class QuickPanelForm : Form
     private int HitTest(Point pt)
     {
         if (_close.Contains(pt)) return 12;
+        if (_monBtn.Contains(pt)) return 14;
         for (int i = 0; i < _modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
@@ -277,8 +283,9 @@ public sealed class QuickPanelForm : Form
         TextRenderer.DrawText(g, Loc.T("panel.title"), TitleFont,
             new Rectangle(Sc(16), Sc(12), Width, Sc(22)), TextCol, TextFormatFlags.Left | TextFormatFlags.Top);
 
-        // крестик
+        // крестик и кнопка «Монитор» слева от него
         Draw.CloseButton(g, _close, _hover == 12);
+        Draw.MonitorButton(g, _monBtn, _hover == 14);
 
         // режимы
         for (int i = 0; i < _modes.Length; i++)

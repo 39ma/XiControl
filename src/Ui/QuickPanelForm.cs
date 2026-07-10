@@ -278,7 +278,7 @@ public sealed class QuickPanelForm : Form
             new Rectangle(Sc(16), Sc(12), Width, Sc(22)), TextCol, TextFormatFlags.Left | TextFormatFlags.Top);
 
         // крестик
-        DrawClose(g, _close, _hover == 12);
+        Draw.CloseButton(g, _close, _hover == 12);
 
         // режимы
         for (int i = 0; i < _modes.Length; i++)
@@ -381,19 +381,6 @@ public sealed class QuickPanelForm : Form
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 
-    private void DrawClose(Graphics g, Rectangle r, bool hover)
-    {
-        if (hover)
-        {
-            using var b = new SolidBrush(Color.FromArgb(200, 60, 60));
-            using var path = Draw.Rounded(r, Sc(5));
-            g.FillPath(b, path);
-        }
-        using var pen = new Pen(hover ? Color.White : DimCol, 1.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-        float m = r.Width * 0.32f;
-        g.DrawLine(pen, r.X + m, r.Y + m, r.Right - m, r.Bottom - m);
-        g.DrawLine(pen, r.Right - m, r.Y + m, r.X + m, r.Bottom - m);
-    }
 
     private static Color Blend(Color a, Color b, float t) => Color.FromArgb(
         (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));

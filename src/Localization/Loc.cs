@@ -33,6 +33,14 @@ public static class Loc
         ["panel.charge"]    = ["Заряд батареи", "Battery charge", "电池充电"],
         ["panel.awake"]     = ["Не спать", "Keep awake", "保持唤醒"],
 
+        ["menu.monitor"]    = ["Монитор", "Monitor", "监视器"],
+        ["monitor.title"]   = ["Монитор", "Monitor", "监视器"],
+        ["monitor.power"]   = ["Потребление", "Power draw", "功耗"],
+        ["monitor.watts"]   = ["{0:0.0} Вт", "{0:0.0} W", "{0:0.0} 瓦"],
+        ["monitor.na"]      = ["— от сети", "— on AC", "— 交流供电"],
+        ["monitor.ram.of"]  = ["{0:0.0} / {1:0.0} ГБ", "{0:0.0} / {1:0.0} GB", "{0:0.0} / {1:0.0} GB"],
+        ["monitor.watts.scale"] = ["{0:0} Вт", "{0:0} W", "{0:0} 瓦"],
+
         ["osd.charging"]         = ["Зарядка", "Charging", "充电中"],
         ["osd.charging.limited"] = ["Зарядка до {0}%", "Charging to {0}%", "充电至 {0}%"],
         ["osd.onbattery"]        = ["Работа от батареи", "On battery", "电池供电"],

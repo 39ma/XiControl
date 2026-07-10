@@ -35,6 +35,10 @@ public sealed class AppConfig
     /// <summary>Исходное действие крышки (AC) до включения «Не спать» — для восстановления, в т.ч. после сбоя.</summary>
     public int? AwakeSavedLidAc { get; set; }
 
+    /// <summary>Позиция окна «Монитор» (виджет перетаскивается мышью); null — по центру.</summary>
+    public int? MonitorX { get; set; }
+    public int? MonitorY { get; set; }
+
     /// <summary>
     /// Действие клавиши «настройки»: "charge" (по умолчанию) — переключение заряда
     /// 80/100, "settings" — открыть Параметры Windows (как в ранних версиях).

@@ -345,6 +345,11 @@ public sealed class TrayApp : IDisposable
             _menu.Items.Add(owl);
         }
 
+        // --- Монитор (Вт / CPU / RAM) ---
+        var monitor = new ToolStripMenuItem(Loc.T("menu.monitor")) { Checked = _monitor?.Visible == true };
+        monitor.Click += (_, _) => ShowMonitor();
+        _menu.Items.Add(monitor);
+
         // --- Режим (подменю) ---
         PerfMode? current = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
         string currentName = current is PerfMode cm && ModeKey(cm) is string mk ? Loc.T(mk) : "—";
@@ -510,6 +515,14 @@ public sealed class TrayApp : IDisposable
         _panel.ReloadModes(); // перестроить раскладку панели (сова появляется/уходит)
     }
 
+    private MonitorForm? _monitor;
+
+    private void ShowMonitor()
+    {
+        _monitor ??= new MonitorForm(_cfg);
+        _monitor.Popup();
+    }
+
     // «Режим совы»: включить/выключить «не спать» (панель обновится, если открыта)
     private void ToggleAwake()
     {
@@ -549,6 +562,7 @@ public sealed class TrayApp : IDisposable
         _guard.Dispose();
         _osd.Dispose();
         _panel.Dispose();
+        _monitor?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         _menu.Dispose();

@@ -176,6 +176,25 @@ public sealed class QuickPanelForm : Form
     private const int WM_HOTKEY = 0x0312, HkEscId = 1;
     private const uint VK_ESCAPE = 0x1B;
 
+    // Глобальный хук мыши: закрывать панель по клику вне её габаритов, не полагаясь на
+    // активацию окна. OnDeactivate у borderless topmost tool-window ненадёжен (панель не
+    // всегда получает фокус — та же причина, по которой Esc сделан через RegisterHotKey),
+    // и после наведения/анимации внешний клик переставал её закрывать.
+    private const int WH_MOUSE_LL = 14;
+    private const int WM_LBUTTONDOWN = 0x0201, WM_RBUTTONDOWN = 0x0204, WM_MBUTTONDOWN = 0x0207;
+    private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    // POINT (два int) в начале структуры разложены полями ptX/ptY — layout идентичен
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT { public int ptX; public int ptY; public uint mouseData; public uint flags; public uint time; public IntPtr dwExtraInfo; }
+
+    private IntPtr _mouseHook;
+    private HookProc? _mouseProc; // держим делегат живым — иначе GC соберёт его и колбэк упадёт
+
     protected override void OnVisibleChanged(EventArgs e)
     {
         base.OnVisibleChanged(e);
@@ -185,12 +204,43 @@ public sealed class QuickPanelForm : Form
             _anim.Start();
             if (!RegisterHotKey(Handle, HkEscId, 0, VK_ESCAPE))
                 Log.Write("QuickPanel: RegisterHotKey(Esc) не удалась — Esc занят другим приложением");
+            InstallMouseHook();
         }
         else
         {
             _anim.Stop();
             UnregisterHotKey(Handle, HkEscId);
+            RemoveMouseHook();
         }
+    }
+
+    private void InstallMouseHook()
+    {
+        if (_mouseHook != IntPtr.Zero) return;
+        _mouseProc = MouseHookProc; // ссылка в поле — защита от сборки делегата
+        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, GetModuleHandle(null), 0);
+        if (_mouseHook == IntPtr.Zero)
+            Log.Write("QuickPanel: SetWindowsHookEx(WH_MOUSE_LL) не удалась — панель закроется только по деактивации");
+    }
+
+    private void RemoveMouseHook()
+    {
+        if (_mouseHook == IntPtr.Zero) return;
+        UnhookWindowsHookEx(_mouseHook);
+        _mouseHook = IntPtr.Zero;
+        _mouseProc = null;
+    }
+
+    private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && (int)wParam is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
+        {
+            var h = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+            // клик не проглатываем — просто прячем панель, если он вне её габаритов
+            if (Visible && !Bounds.Contains(h.ptX, h.ptY))
+                BeginInvoke(new Action(Hide));
+        }
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
     }
 
     protected override void WndProc(ref Message m)
@@ -394,7 +444,7 @@ public sealed class QuickPanelForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _anim.Dispose();
+        if (disposing) { _anim.Dispose(); RemoveMouseHook(); }
         base.Dispose(disposing);
     }
 }

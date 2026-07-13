@@ -105,11 +105,23 @@ public sealed class AppConfig
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? new AppConfig();
+                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? Fresh();
         }
         catch (Exception ex) { Log.Ex("AppConfig.Load", ex); /* повреждённый конфиг → дефолт */ }
-        return new AppConfig();
+        return Fresh();
     }
+
+    /// <summary>Конфиг для первого старта (файла нет / повреждён): язык — по языку ОС.</summary>
+    private static AppConfig Fresh() => new() { Language = DetectOsLanguage() };
+
+    /// <summary>Язык интерфейса по языку Windows: ru→Ru, zh→Zh, всё остальное (вкл. en)→En.</summary>
+    private static Lang DetectOsLanguage() =>
+        System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName switch
+        {
+            "ru" => Lang.Ru,
+            "zh" => Lang.Zh,
+            _ => Lang.En,
+        };
 
     public void Save()
     {

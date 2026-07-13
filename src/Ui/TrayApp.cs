@@ -74,6 +74,19 @@ public sealed class TrayApp : IDisposable
         _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare);
         _guard.Reapply();
 
+        // Режим при старте (прошивка сбрасывает его на ребуте):
+        //  • RestoreMode → восстановить последний выбранный (если он ещё видим), иначе Auto;
+        //  • иначе, если задан ForceStartMode (только правкой конфига) → принудительно его.
+        if (_cfg.RestoreMode)
+        {
+            if (_cfg.StartPerfMode is PerfMode saved)
+                ApplyStartMode(_modes.Any(m => m.mode == saved) ? saved : PerfMode.Auto);
+        }
+        else if (_cfg.ForceStartMode is PerfMode forced)
+        {
+            ApplyStartMode(forced);
+        }
+
         // «Режим совы»: восстановить после сбоя, включить заново, либо погасить, если фичу отключили
         if (_cfg.Awake && !_cfg.OwlMode) { AwakeMode.Disable(_cfg); _cfg.Awake = false; _cfg.Save(); }
         else if (_cfg.Awake) { AwakeMode.Enable(_cfg); _cfg.Save(); }
@@ -391,6 +404,18 @@ public sealed class TrayApp : IDisposable
         showFull.Click += (_, _) => ToggleModeVisibility(eco: _cfg.EcoMode, full: !_cfg.FullSpeedMode);
         settings.DropDownItems.Add(showFull);
 
+        // режим при старте (подменю): «восстанавливать последний» ИЛИ «закрепить текущий» —
+        // взаимоисключающие переключатели (см. SetStartRestore / PinCurrentStartMode)
+        var startMode = new ToolStripMenuItem(Loc.T("menu.startmode"));
+        var restoreLast = new ToolStripMenuItem(Loc.T("menu.startmode.restore")) { Checked = _cfg.RestoreMode };
+        restoreLast.Click += (_, _) => SetStartRestore(!_cfg.RestoreMode);
+        startMode.DropDownItems.Add(restoreLast);
+        var pinCurrent = new ToolStripMenuItem(Loc.T("menu.startmode.pin")) { Checked = _cfg.ForceStartMode is not null };
+        pinCurrent.Click += (_, _) => PinCurrentStartMode();
+        startMode.DropDownItems.Add(pinCurrent);
+        TintDropDown(startMode);
+        settings.DropDownItems.Add(startMode);
+
         settings.DropDownItems.Add(new ToolStripSeparator());
 
         // раскладка Mi-кнопки: галочка = клик переключает режимы (двойной — заряд), снята = наоборот
@@ -470,6 +495,7 @@ public sealed class TrayApp : IDisposable
     private void SetMode(PerfMode mode, string key)
     {
         Safe(() => _mifs.SetPerfMode(mode), false);
+        _cfg.RememberMode(mode);
         _osd.Flash(ModeKind(mode), Loc.T(key));
         UpdateTrayIcon();
     }
@@ -491,6 +517,7 @@ public sealed class TrayApp : IDisposable
         int idx = Array.IndexOf(_cycle, cur);
         var next = _cycle[(idx < 0 ? 0 : idx + 1) % _cycle.Length];
         Safe(() => _mifs.SetPerfMode(next), false);
+        _cfg.RememberMode(next);
         if (_panel.Visible)
             _panel.RefreshUi(); // панель открыта: выбор «перелистывается» в ней, OSD не нужен
         else
@@ -505,6 +532,39 @@ public sealed class TrayApp : IDisposable
         _cfg.Save();
         ApplyModeVisibility();
         _panel.ReloadModes();
+    }
+
+    // Применить желаемый стартовый режим; если прошивка не приняла (напр. Full-speed на батарее) — Auto.
+    private void ApplyStartMode(PerfMode mode)
+    {
+        if (!Safe(() => _mifs.SetPerfMode(mode), false))
+            Safe(() => _mifs.SetPerfMode(PerfMode.Auto), false);
+    }
+
+    // «Восстанавливать последний» (взаимоисключающе с «закрепить»). При первом включении
+    // (StartPerfMode ещё пуст) запоминаем текущий режим сразу — чтобы было что восстанавливать;
+    // при повторном значение не трогаем, поэтому вернётся всё как было до отключения.
+    private void SetStartRestore(bool on)
+    {
+        _cfg.RestoreMode = on;
+        if (on)
+        {
+            _cfg.ForceStartMode = null; // включили восстановление — снимаем закреп
+            if (_cfg.StartPerfMode is null)
+                _cfg.StartPerfMode = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
+        }
+        _cfg.Save();
+    }
+
+    // «Закрепить текущий режим»: фиксируем текущий как стартовый. Авто (или режим не прочитался)
+    // = «не закреплять» → стираем закреп. Установка закрепа взаимоисключающе гасит восстановление.
+    private void PinCurrentStartMode()
+    {
+        var cur = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
+        _cfg.ForceStartMode = cur is PerfMode m && m != PerfMode.Auto ? m : null;
+        if (_cfg.ForceStartMode is not null)
+            _cfg.RestoreMode = false;
+        _cfg.Save();
     }
 
     // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится

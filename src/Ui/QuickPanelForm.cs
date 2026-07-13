@@ -285,6 +285,7 @@ public sealed class QuickPanelForm : Form
         if (h >= 0 && h < _modes.Length)
         {
             try { _mifs.SetPerfMode(_modes[h].mode); } catch { }
+            _cfg.RememberMode(_modes[h].mode);
             RefreshState();
             Invalidate();
             Changed?.Invoke();

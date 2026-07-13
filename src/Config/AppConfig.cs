@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using XiControl.Localization;
+using XiControl.Wmi;
 
 namespace XiControl.Config;
 
@@ -10,6 +11,29 @@ public sealed class AppConfig
     public Lang Language { get; set; } = Lang.Ru;
     public bool ChargeCare { get; set; } = false;
     public bool AutoStart { get; set; } = false;
+
+    /// <summary>
+    /// Восстанавливать выбранный режим производительности после перезагрузки.
+    /// Пока выключено — режим в конфиг не пишется (не тратим ресурс SSD на каждое переключение).
+    /// </summary>
+    public bool RestoreMode { get; set; } = false;
+
+    /// <summary>
+    /// Режим, применяемый при старте (когда RestoreMode = true). Обновляется при каждой смене
+    /// режима, пока опция включена. При выключении опции не удаляется и не обновляется — при
+    /// повторном включении всё вернётся как было до отключения.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PerfMode? StartPerfMode { get; set; }
+
+    /// <summary>
+    /// Принудительный режим при каждой загрузке — задаётся только правкой config.json. Работает
+    /// лишь когда RestoreMode = false: каждый старт включается этот режим, с какого бы ни выключились.
+    /// Значения: "Quiet", "Turbo", "FullSpeed", "Auto", "Eco". Убрать — null или удалить строку.
+    /// Если режим сейчас недоступен (напр. Full-speed на батарее) — включится Auto.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PerfMode? ForceStartMode { get; set; }
 
     /// <summary>
     /// Показывать скрытый режим Эко (0x0A) в меню, панели и цикле Mi-кнопки.
@@ -95,5 +119,13 @@ public sealed class AppConfig
             File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
         }
         catch (Exception ex) { Log.Ex("AppConfig.Save", ex); /* не критично */ }
+    }
+
+    /// <summary>Запомнить режим для восстановления — только если опция включена и значение изменилось (бережём SSD).</summary>
+    public void RememberMode(PerfMode mode)
+    {
+        if (!RestoreMode || StartPerfMode == mode) return;
+        StartPerfMode = mode;
+        Save();
     }
 }

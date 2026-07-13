@@ -344,6 +344,10 @@ public sealed class TrayApp : IDisposable
         _menu.Items.Clear();
         foreach (var it in stale) it.Dispose();
 
+        // размер иконок меню под текущий DPI (сейчас иконка только у пункта «Язык»)
+        int imgSz = (int)Math.Round(16 * _menu.DeviceDpi / 96.0);
+        _menu.ImageScalingSize = new Size(imgSz, imgSz);
+
         // --- Заряд ---
         bool care = Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare);
         var charge = new ToolStripMenuItem(Loc.T("menu.charge")) { Checked = care };
@@ -382,7 +386,12 @@ public sealed class TrayApp : IDisposable
         // --- Настройки (подменю: язык, автозапуск) ---
         var settings = new ToolStripMenuItem(Loc.T("menu.settings"));
 
-        var lang = new ToolStripMenuItem(Loc.T("menu.language"));
+        var lang = new ToolStripMenuItem(Loc.T("menu.language"))
+        {
+            // единственная иконка в меню — визуальный якорь: найти переключение языка,
+            // не читая подписей (напр. если случайно выбран незнакомый язык)
+            Image = SvgIcons.Render(SvgIcons.TrayLanguage, imgSz, _dark ? DarkPalette.Text : SystemColors.MenuText),
+        };
         lang.DropDownItems.Add(LangItem("Русский", Lang.Ru));
         lang.DropDownItems.Add(LangItem("English", Lang.En));
         lang.DropDownItems.Add(LangItem("中文", Lang.Zh));

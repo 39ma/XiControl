@@ -47,6 +47,7 @@ public static class SvgIcons
     public const string TrayPerfQuiet = "tray-perf-quiet";
     public const string TrayPerfTurbo = "tray-perf-turbo";
     public const string TraySettings = "tray-settings";
+    public const string TrayLanguage = "tray-language"; // «文A» для пункта выбора языка в меню
 
     private static readonly Dictionary<string, string> _sources = new();       // имя → svg-текст
     private static readonly Dictionary<(string, int, int), Bitmap> _bitmaps = new(); // (имя, размер, argb-цвет|0)

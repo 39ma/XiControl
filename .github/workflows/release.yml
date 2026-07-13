@@ -47,3 +47,6 @@ jobs:
         with:
           files: XiControl-*.exe
           generate_release_notes: true
+          # тег с суффиксом через дефис (v0.7.0-pre) → пометить как pre-release,
+          # чтобы не срабатывал winget-workflow (он слушает release types: [released])
+          prerelease: ${{ contains(github.ref_name, '-') }}

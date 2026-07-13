@@ -565,14 +565,20 @@ public sealed class TrayApp : IDisposable
         _cfg.Save();
     }
 
-    // «Закрепить текущий режим»: фиксируем текущий как стартовый. Авто (или режим не прочитался)
-    // = «не закреплять» → стираем закреп. Установка закрепа взаимоисключающе гасит восстановление.
+    // «Закрепить текущий режим» — переключатель: уже закреплён → снять (обе галки пустые);
+    // не закреплён → закрепить текущий (Авто/не прочитался — закреплять нечего). Закрепление
+    // взаимоисключающе гасит «восстанавливать последний».
     private void PinCurrentStartMode()
     {
-        var cur = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
-        _cfg.ForceStartMode = cur is PerfMode m && m != PerfMode.Auto ? m : null;
         if (_cfg.ForceStartMode is not null)
+        {
+            _cfg.ForceStartMode = null; // снять закреп
+        }
+        else if (Safe<PerfMode?>(() => _mifs.GetPerfMode(), null) is PerfMode m && m != PerfMode.Auto)
+        {
+            _cfg.ForceStartMode = m;
             _cfg.RestoreMode = false;
+        }
         _cfg.Save();
     }
 

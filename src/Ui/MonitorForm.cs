@@ -17,9 +17,10 @@ public sealed class MonitorForm : Form
     private static readonly Color Border = Color.FromArgb(70, 70, 74);
     private static readonly Color TextCol = Color.FromArgb(238, 238, 238);
     private static readonly Color DimCol = Color.FromArgb(150, 150, 155);
-    private static readonly Color PowerCol = Color.FromArgb(255, 149, 0);
+    private static readonly Color DischargeCol = Color.FromArgb(255, 149, 0); // оранжевый — разряд батареи (вниз)
+    private static readonly Color ChargeCol = Color.FromArgb(52, 199, 89);    // зелёный — заряд в батарею (вверх)
     private static readonly Color CpuCol = Color.FromArgb(90, 170, 255);
-    private static readonly Color RamCol = Color.FromArgb(52, 199, 89);
+    private static readonly Color RamCol = Color.FromArgb(179, 157, 219);     // сиреневый (зелёный ушёл под заряд)
 
     private static readonly Font TitleFont = new("Segoe UI Semibold", 11f);
     private static readonly Font ValueFont = new("Segoe UI Semibold", 13f);
@@ -28,10 +29,9 @@ public sealed class MonitorForm : Form
     private const int Capacity = 180; // ~3 минуты при 1 Гц
 
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
-    private readonly List<float> _power = new(); // Вт; NaN = датчик молчит (питание от сети)
+    private readonly List<float> _power = new(); // Вт со знаком: + заряд в батарею, − разряд; NaN = от сети без заряда
     private readonly List<float> _cpu = new();   // 0..100
     private readonly List<float> _ram = new();   // 0..100
-    private bool _charging;
 
     private ManagementObjectSearcher? _battery;
     private long _prevIdle, _prevKernel, _prevUser;
@@ -194,21 +194,21 @@ public sealed class MonitorForm : Form
         return m.MemoryLoad;
     }
 
-    /// <summary>Вт с датчика батареи: разряд — потребление системы, заряд — мощность в батарею, от сети — NaN.</summary>
+    /// <summary>Вт с датчика батареи со знаком: заряд в батарею +, разряд −, от сети без заряда — NaN.</summary>
     private float SamplePowerWatts()
     {
         try
         {
             _battery ??= new ManagementObjectSearcher(@"root\wmi",
-                "SELECT ChargeRate, DischargeRate, Charging, Discharging FROM BatteryStatus");
+                "SELECT ChargeRate, DischargeRate, Discharging FROM BatteryStatus");
             foreach (ManagementObject o in _battery.Get())
             {
                 bool discharging = (bool)o["Discharging"];
-                _charging = (bool)o["Charging"];
                 uint rate = discharging ? (uint)(int)o["DischargeRate"] : (uint)(int)o["ChargeRate"];
                 o.Dispose();
                 if (rate == 0) return float.NaN;
-                return rate / 1000f;
+                float w = rate / 1000f;
+                return discharging ? -w : w;   // разряд — вниз (минус), заряд — вверх (плюс)
             }
         }
         catch (Exception ex) { Log.Ex("Monitor.Power", ex); _battery = null; }
@@ -235,14 +235,16 @@ public sealed class MonitorForm : Form
         Draw.CloseButton(g, _close, _closeHover);
 
         int rowH = Sc(96), top = Sc(44);
-        string powerText = _power.Count > 0 && !float.IsNaN(_power[^1])
-            ? (_charging ? "+" : "") + Loc.T("monitor.watts", _power[^1])
+        float pw = _power.Count > 0 ? _power[^1] : float.NaN;
+        Color pColor = float.IsNaN(pw) ? DimCol : (pw >= 0 ? ChargeCol : DischargeCol);
+        string powerText = !float.IsNaN(pw)
+            ? (pw >= 0 ? "+" : "") + Loc.T("monitor.watts", MathF.Abs(pw))  // всегда положительное число; направление — цветом
             : Loc.T("monitor.na");
 
         float powerMax = NiceMax(_power);
         DrawRow(g, new Rectangle(Sc(16), top, Width - Sc(32), rowH),
-            Loc.T("monitor.power"), powerText, PowerCol, _power, powerMax,
-            scaleLabel: Loc.T("monitor.watts.scale", powerMax));
+            Loc.T("monitor.power"), powerText, pColor, _power, powerMax,
+            scaleLabel: Loc.T("monitor.watts.scale", powerMax), colored: true);
         DrawRow(g, new Rectangle(Sc(16), top + rowH, Width - Sc(32), rowH),
             "CPU", _cpu.Count > 0 && !float.IsNaN(_cpu[^1]) ? $"{_cpu[^1]:0}%" : "—", CpuCol, _cpu, 100f);
         DrawRow(g, new Rectangle(Sc(16), top + rowH * 2, Width - Sc(32), rowH),
@@ -254,12 +256,12 @@ public sealed class MonitorForm : Form
     private static float NiceMax(List<float> data)
     {
         float max = 8f;
-        foreach (var v in data) if (!float.IsNaN(v) && v > max) max = v;
+        foreach (var v in data) if (!float.IsNaN(v) && MathF.Abs(v) > max) max = MathF.Abs(v);
         return MathF.Ceiling(max * 1.05f / 5f) * 5f;
     }
 
     private void DrawRow(Graphics g, Rectangle r, string label, string value, Color color, List<float> data, float max,
-        string? sub = null, string? scaleLabel = null)
+        string? sub = null, string? scaleLabel = null, bool colored = false)
     {
         TextRenderer.DrawText(g, label, LabelFont,
             new Rectangle(r.X, r.Y + Sc(8), Sc(110), Sc(16)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
@@ -296,6 +298,8 @@ public sealed class MonitorForm : Form
         if (data.Count < 2 || max <= 0) return;
 
         float stepX = (float)plot.Width / (Capacity - 1);
+        if (colored) { DrawColored(g, plot, data, max, stepX); return; }
+
         var pts = new List<PointF>(data.Count);
         for (int i = 0; i < data.Count; i++)
         {
@@ -305,6 +309,25 @@ public sealed class MonitorForm : Form
             pts.Add(new PointF(x, y));
         }
         DrawSegment(g, pts, plot, color);
+    }
+
+    // График питания: во всю высоту от низа (по модулю), но каждый тик красится по направлению —
+    // зелёный (заряд, ток в батарею) или оранжевый (разряд).
+    private void DrawColored(Graphics g, Rectangle plot, List<float> data, float max, float stepX)
+    {
+        float baseY = plot.Bottom - Sc(3), top = plot.Y + Sc(3), span = baseY - top;
+        for (int i = 0; i < data.Count - 1; i++)
+        {
+            if (float.IsNaN(data[i]) || float.IsNaN(data[i + 1])) continue;
+            float x0 = plot.X + i * stepX, x1 = plot.X + (i + 1) * stepX;
+            float y0 = baseY - span * Math.Clamp(MathF.Abs(data[i]) / max, 0f, 1f);
+            float y1 = baseY - span * Math.Clamp(MathF.Abs(data[i + 1]) / max, 0f, 1f);
+            Color c = data[i + 1] >= 0f ? ChargeCol : DischargeCol; // цвет по направлению текущего тика
+            using (var fill = new SolidBrush(Color.FromArgb(45, c)))
+                g.FillPolygon(fill, new[] { new PointF(x0, y0), new PointF(x1, y1), new PointF(x1, baseY), new PointF(x0, baseY) });
+            using var pen = new Pen(c, 1.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+            g.DrawLine(pen, x0, y0, x1, y1);
+        }
     }
 
     private void DrawSegment(Graphics g, List<PointF> pts, Rectangle plot, Color color)

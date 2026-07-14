@@ -35,6 +35,7 @@ public static class SvgIcons
     public const string PerfEcoStar2 = "perf-eco-star2";     //   мерцают в противофазе
     public const string PerfQuiet = "perf-quiet";
     public const string PerfTurbo = "perf-turbo";
+    public const string RefreshRate = "refresh-rate"; // монитор с круговыми стрелками (авто-герцовка)
     public const string Settings = "settings";
     public const string FnLockOn = "fn-lock-on";
     public const string FnLockOff = "fn-lock-off";

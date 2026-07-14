@@ -53,6 +53,18 @@ public sealed class AppConfig
     /// </summary>
     public bool OwlMode { get; set; } = true;
 
+    /// <summary>
+    /// Авто-герцовка: при подключении зарядки экран переводится на AcRefreshRate Гц,
+    /// при отключении — на BatteryRefreshRate. Переключается в меню трея и в панели.
+    /// </summary>
+    public bool AutoRefreshRate { get; set; } = false;
+
+    /// <summary>Частота экрана (Гц) от сети. Настраивается только правкой config.json.</summary>
+    public int AcRefreshRate { get; set; } = 120;
+
+    /// <summary>Частота экрана (Гц) от батареи. Настраивается только правкой config.json.</summary>
+    public int BatteryRefreshRate { get; set; } = 60;
+
     /// <summary>Режим «Не спать» активен: экран не гаснет, сна нет; крышка на AC — «ничего не делать».</summary>
     public bool Awake { get; set; } = false;
 

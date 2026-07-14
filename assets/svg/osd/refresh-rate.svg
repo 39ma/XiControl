@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- корпус монитора -->
+  <rect x="14" y="22" width="100" height="68" rx="10" fill="#607D8B"/>
+  <rect x="21" y="29" width="86" height="54" rx="5" fill="#455A64"/>
+  <!-- подставка -->
+  <path d="M56 90 h16 v10 h-16 Z" fill="#607D8B"/>
+  <rect x="40" y="100" width="48" height="8" rx="4" fill="#90A4AE"/>
+  <!-- круговые стрелки: смена частоты обновления -->
+  <path d="M49 56 A15 15 0 0 1 79 56" stroke="#4FC3F7" stroke-width="7" fill="none"/>
+  <path d="M79 56 A15 15 0 0 1 49 56" stroke="#2196F3" stroke-width="7" fill="none"/>
+  <path d="M72 51 L86 51 L79 67 Z" fill="#4FC3F7"/>
+  <path d="M42 61 L56 61 L49 45 Z" fill="#2196F3"/>
+</svg>

@@ -16,6 +16,7 @@ public sealed class TrayApp : IDisposable
     private bool _dark = Theme.IsDark();
     private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
+    private readonly RefreshRateGuard _hzGuard;
     private readonly OsdForm _osd = new();
     private readonly MifsEventWatcher _events = new();
     private readonly QuickPanelForm _panel;
@@ -73,6 +74,10 @@ public sealed class TrayApp : IDisposable
         // Страж заряда: применяет желаемое состояние на старте и после сна/смены питания
         _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare);
         _guard.Reapply();
+
+        // Авто-герцовка: частота экрана по питанию (сеть/батарея) на старте и при его смене
+        _hzGuard = new RefreshRateGuard(_cfg);
+        _hzGuard.Reapply();
 
         // Режим при старте (прошивка сбрасывает его на ребуте):
         //  • RestoreMode → восстановить последний выбранный (если он ещё видим), иначе Auto;
@@ -310,6 +315,15 @@ public sealed class TrayApp : IDisposable
         float f = ps.BatteryLifePercent;
         string? sub = (f >= 0f && f <= 1f) ? Loc.T("osd.level", (int)Math.Round(f * 100)) : null;
 
+        // авто-герцовка включена — дописываем фактическую частоту (ближайшую поддерживаемую;
+        // сам переход сделает RefreshRateGuard после дебаунса)
+        if (_cfg.AutoRefreshRate &&
+            RefreshRate.Resolve(online ? _cfg.AcRefreshRate : _cfg.BatteryRefreshRate) is int real)
+        {
+            string hz = Loc.T("osd.hz", real);
+            sub = sub is null ? hz : $"{sub} • {hz}";
+        }
+
         if (online)
         {
             if (_cfg.ChargeCare)
@@ -362,6 +376,12 @@ public sealed class TrayApp : IDisposable
             owl.Click += (_, _) => ToggleAwake();
             _menu.Items.Add(owl);
         }
+
+        // --- Авто-герцовка (частота экрана по питанию) ---
+        var hz = new ToolStripMenuItem(Loc.T("menu.hz", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate))
+        { Checked = _cfg.AutoRefreshRate };
+        hz.Click += (_, _) => ToggleAutoHz(!_cfg.AutoRefreshRate);
+        _menu.Items.Add(hz);
 
         // --- Монитор (Вт / CPU / RAM) ---
         var monitor = new ToolStripMenuItem(Loc.T("menu.monitor")) { Checked = _monitor?.Visible == true };
@@ -582,6 +602,21 @@ public sealed class TrayApp : IDisposable
         _cfg.Save();
     }
 
+    // Авто-герцовка: вкл — сразу применить частоту по текущему питанию, выкл — частоту не трогаем
+    private void ToggleAutoHz(bool on)
+    {
+        _cfg.AutoRefreshRate = on;
+        _cfg.Save();
+        if (on) _hzGuard.Reapply();
+        if (_panel.Visible)
+            _panel.RefreshUi(); // панель открыта: ячейка герцовки переключается в ней, OSD не нужен
+        else if (on)
+            _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.on"),
+                       Loc.T("osd.hz.on.sub", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate));
+        else
+            _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.off"));
+    }
+
     // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится
     private void ToggleOwlFeature(bool on)
     {
@@ -636,6 +671,7 @@ public sealed class TrayApp : IDisposable
         _miClick.Dispose();
         _events.Dispose();
         _guard.Dispose();
+        _hzGuard.Dispose();
         _osd.Dispose();
         _panel.Dispose();
         _monitor?.Dispose();

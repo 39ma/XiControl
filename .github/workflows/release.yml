@@ -1,14 +1,22 @@
 # Автосборка релиза: git tag v* → GitHub Release с готовыми exe.
 #   git tag v0.2.0 && git push origin v0.2.0
+# Плюс rolling pre-release: каждый push в main (или ручной запуск workflow)
+# собирает exe и обновляет pre-release с тегом «pre» — всегда свежая сборка из main.
 name: release
 
 on:
   push:
     tags: ['v*']
-  workflow_dispatch: # ручной запуск для проверки сборки (без публикации релиза)
+    branches: [main]
+  workflow_dispatch: # ручной запуск: публикует/обновляет тот же pre-release «pre»
 
 permissions:
   contents: write
+
+# параллельные сборки одного ref не нужны (и гоняются за один pre-release)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -20,26 +28,37 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # имя артефакта и версия сборки: тег v* → как раньше; main/ручной запуск → «pre»
+      - name: Compute version
+        id: ver
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $name = $env:GITHUB_REF_NAME
+            $ver = $name -replace '^v',''
+            if ($ver -notmatch '^\d') { $ver = '0.0.0' }
+          } else {
+            $name = 'pre'
+            $ver = "0.0.$($env:GITHUB_RUN_NUMBER)" # дев-версия: номер прогона CI
+          }
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "ver=$ver" >> $env:GITHUB_OUTPUT
+
       # Самодостаточный single-file: не требует установленного .NET (~70 МБ)
       - name: Publish self-contained
         run: |
-          $ver = $env:GITHUB_REF_NAME -replace '^v',''
-          if ($ver -notmatch '^\d') { $ver = '0.0.0' }  # workflow_dispatch без тега
           dotnet publish src/XiControl.csproj -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$ver `
+            -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} `
             -o publish/standalone
-          Copy-Item publish/standalone/XiControl.exe "XiControl-$env:GITHUB_REF_NAME-win-x64.exe"
+          Copy-Item publish/standalone/XiControl.exe "XiControl-${{ steps.ver.outputs.name }}-win-x64.exe"
 
       # Лёгкий вариант: требует .NET 8 Desktop Runtime (~2 МБ)
       - name: Publish framework-dependent
         run: |
-          $ver = $env:GITHUB_REF_NAME -replace '^v',''
-          if ($ver -notmatch '^\d') { $ver = '0.0.0' }
           dotnet publish src/XiControl.csproj -c Release -r win-x64 --no-self-contained `
-            -p:PublishSingleFile=true -p:Version=$ver `
+            -p:PublishSingleFile=true -p:Version=${{ steps.ver.outputs.ver }} `
             -o publish/framework
-          Copy-Item publish/framework/XiControl.exe "XiControl-$env:GITHUB_REF_NAME-win-x64-net8.exe"
+          Copy-Item publish/framework/XiControl.exe "XiControl-${{ steps.ver.outputs.name }}-win-x64-net8.exe"
 
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
@@ -50,3 +69,24 @@ jobs:
           # тег с суффиксом через дефис (v0.7.0-pre) → пометить как pre-release,
           # чтобы не срабатывал winget-workflow (он слушает release types: [released])
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+      # main/ручной запуск: подвинуть тег «pre» на собранный коммит и обновить rolling
+      # pre-release (exe с теми же именами перезаписываются). winget-workflow не
+      # срабатывает: он слушает только types: [released], а это pre-release.
+      - name: Move pre tag
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: |
+          git tag -f pre
+          git push -f origin pre
+
+      - name: Update pre-release
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pre
+          name: Pre-release (main)
+          prerelease: true
+          files: XiControl-*.exe
+          body: |
+            Автосборка из `main` (коммит ${{ github.sha }}, прогон №${{ github.run_number }}).
+            Свежая, но не проверенная руками сборка — стабильные версии смотрите в релизах с тегами `v*`.

@@ -11,6 +11,8 @@ public static class Loc
     {
         ["app.name"]        = ["Xi Control", "Xi Control", "Xi Control"],
         ["menu.charge"]     = ["Беречь батарею (80%)", "Battery care (80%)", "电池保护 (80%)"],
+        ["menu.travel"]     = ["Зарядить «в дорогу» (100%)", "Travel charge (100%)", "出行充电 (100%)"],
+        ["menu.travel.sound"] = ["Звук готовности «в дорогу»", "Travel ready sound", "出行完成提示音"],
         ["menu.perf"]       = ["Режим производительности", "Performance mode", "性能模式"],
         ["mode.eco"]        = ["Эко", "Eco", "节能"],
         ["mode.quiet"]      = ["Тихий", "Quiet", "静音"],
@@ -41,6 +43,12 @@ public static class Loc
         ["panel.title"]     = ["Быстрые настройки", "Quick settings", "快速设置"],
         ["panel.charge"]    = ["Заряд батареи", "Battery charge", "电池充电"],
         ["panel.awake"]     = ["Не спать", "Keep awake", "保持唤醒"],
+        ["panel.travel"]    = ["В дорогу", "Travel", "出行"],
+
+        ["osd.travel"]       = ["Режим «В дорогу»", "Travel mode", "出行模式"],
+        ["osd.travel.sub"]   = ["Заряжаем до 100%", "Charging to 100%", "充电至 100%"],
+        ["osd.travel.off"]   = ["Режим «В дорогу» выключен", "Travel mode off", "出行模式已关闭"],
+        ["osd.travel.ready"] = ["Батарея заряжена — можно в дорогу!", "Battery full — ready to go!", "电池已充满，可以出发！"],
 
         ["menu.monitor"]    = ["Монитор", "Monitor", "监视器"],
         ["monitor.title"]   = ["Монитор", "Monitor", "监视器"],

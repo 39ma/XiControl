@@ -38,11 +38,10 @@ public sealed class QuickPanelForm : Form
     // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
     private (PerfMode mode, string key, Color accent)[] _modes = [];
     private Rectangle[] _modeRects = [];
-    private Rectangle _care80, _care100, _hzCell, _awake, _close, _monBtn;
+    private Rectangle _care80, _care100, _travelCell, _hzCell, _awake, _close, _monBtn;
 
     private PerfMode? _mode;
-    private bool _care;
-    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка
+    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу
 
     // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
     // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
@@ -62,6 +61,9 @@ public sealed class QuickPanelForm : Form
 
     /// <summary>Кнопка-график слева от крестика: открыть окно «Монитор» (владелец — трей).</summary>
     public Action? MonitorRequested;
+
+    /// <summary>Панель переключила режим «В дорогу» — трей запускает/останавливает наблюдение за 100%.</summary>
+    public Action? TravelChanged;
 
     public QuickPanelForm(MifsClient mifs, AppConfig cfg)
     {
@@ -114,7 +116,6 @@ public sealed class QuickPanelForm : Form
     private void RefreshState()
     {
         try { _mode = _mifs.GetPerfMode(); } catch { _mode = null; }
-        try { _care = _mifs.GetChargeCare(); } catch { _care = _cfg.ChargeCare; }
     }
 
     /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
@@ -152,14 +153,16 @@ public sealed class QuickPanelForm : Form
         for (int i = 0; i < n; i++)
             _modeRects[i] = new Rectangle(p + i * (cellW + gap), modeY, cellW, cellH);
 
-        // справа от пилюль заряда — ячейки-переключатели: авто-герцовка и «Не спать» (сова)
+        // ряд заряда: [В дорогу] [80%] [100%] … [авто-герцовка] [Не спать]
         int owlW = _cfg.OwlMode ? Sc(56) : 0;
         int hzW = Sc(56);
-        int pillsW = content - hzW - gap - (_cfg.OwlMode ? owlW + gap : 0);
+        int travelW = Sc(46);
+        int pillsW = content - travelW - gap - hzW - gap - (_cfg.OwlMode ? owlW + gap : 0);
         int half = (pillsW - gap) / 2;
-        _care80 = new Rectangle(p, pillsY, half, pillsH);
-        _care100 = new Rectangle(p + half + gap, pillsY, half, pillsH);
-        _hzCell = new Rectangle(p + pillsW + gap, pillsY, hzW, pillsH);
+        _travelCell = new Rectangle(p, pillsY, travelW, pillsH);
+        _care80 = new Rectangle(_travelCell.Right + gap, pillsY, half, pillsH);
+        _care100 = new Rectangle(_care80.Right + gap, pillsY, half, pillsH);
+        _hzCell = new Rectangle(_care100.Right + gap, pillsY, hzW, pillsH);
         _awake = _cfg.OwlMode ? new Rectangle(_hzCell.Right + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
         _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
@@ -295,10 +298,24 @@ public sealed class QuickPanelForm : Form
         else if (h == 10 || h == 11)
         {
             bool on = h == 10;
+            bool wasTravel = _cfg.TravelMode;
+            _cfg.TravelMode = false; // явный выбор лимита отменяет «В дорогу»
             try { _mifs.SetChargeCare(on); } catch { }
             _cfg.ChargeCare = on; _cfg.Save();
             RefreshState();
             Invalidate();
+            if (wasTravel) TravelChanged?.Invoke(); // трей остановит наблюдение за 100%
+        }
+        else if (h == 16)
+        {
+            if (!_cfg.ChargeCare) return; // при постоянном 100% ячейка неактивна
+            _cfg.TravelMode = !_cfg.TravelMode;
+            // вкл → снять защиту (заряд до 100); выкл → вернуть базовый режим (беречь 80)
+            try { _mifs.SetChargeCare(_cfg.TravelMode ? false : _cfg.ChargeCare); } catch { }
+            _cfg.Save();
+            RefreshState();
+            Invalidate();
+            TravelChanged?.Invoke();
         }
         else if (h == 13)
         {
@@ -323,6 +340,7 @@ public sealed class QuickPanelForm : Form
         if (_close.Contains(pt)) return 12;
         if (_monBtn.Contains(pt)) return 14;
         for (int i = 0; i < _modes.Length; i++) if (_modeRects[i].Contains(pt)) return i;
+        if (_travelCell.Contains(pt)) return 16;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
         if (_hzCell.Contains(pt)) return 15;
@@ -379,9 +397,22 @@ public sealed class QuickPanelForm : Form
 
         // заряд (заголовок слева) + «Не спать» (заголовок справа, над совой)
         TextRenderer.DrawText(g, Loc.T("panel.charge"), CapFont,
-            new Rectangle(Sc(16), _care80.Y - Sc(20), Width, Sc(18)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
-        DrawPill(g, _care80, "80%", _care, _hover == 10, Green, PillFont);
-        DrawPill(g, _care100, "100%", !_care, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
+            new Rectangle(Sc(16), _travelCell.Y - Sc(20), Width, Sc(18)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
+
+        // «В дорогу»: активна = TravelMode; неактивна (серая), когда базово стоит постоянный 100%.
+        // Пилюли 80/100 показывают базовую настройку (ChargeCare), «В дорогу» — временный оверрайд.
+        bool travelEnabled = _cfg.ChargeCare;
+        DrawCell(g, _travelCell, _cfg.TravelMode, travelEnabled && _hover == 16, Orange, Sc(10));
+        float trIcon = Math.Min(_travelCell.Width, _travelCell.Height) - Sc(8);
+        float trOp = !travelEnabled ? 0.28f : (_cfg.TravelMode || _hover == 16 ? 1f : 0.6f);
+        var trRect = new RectangleF(_travelCell.X + (_travelCell.Width - trIcon) / 2f, _travelCell.Y + (_travelCell.Height - trIcon) / 2f, trIcon, trIcon);
+        if (_cfg.TravelMode)
+            SvgIcons.DrawTravelPulse(g, trRect, _gaugeT, trOp); // молния мигает, когда режим активен
+        else
+            SvgIcons.Draw(g, SvgIcons.TravelOff, trRect, trOp);
+
+        DrawPill(g, _care80, "80%", _cfg.ChargeCare, _hover == 10, Green, PillFont);
+        DrawPill(g, _care100, "100%", !_cfg.ChargeCare, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
 
         // авто-герцовка: монитор с круговыми стрелками, активна при включённой опции
         DrawCell(g, _hzCell, _cfg.AutoRefreshRate, _hover == 15, Blue, Sc(10));

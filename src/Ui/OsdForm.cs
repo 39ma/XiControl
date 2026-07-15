@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace XiControl.Ui;
 
-public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff }
+public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff }
 
 /// <summary>
 /// OSD-оверлей: тёмная скруглённая карточка по центру с иконкой и текстом,
@@ -154,7 +154,7 @@ public sealed class OsdForm : Form
     }
 
     private static bool IsAnimated(OsdKind kind) => kind is
-        OsdKind.Auto or OsdKind.Quiet or OsdKind.Turbo or OsdKind.Full or OsdKind.Eco or OsdKind.Charging;
+        OsdKind.Auto or OsdKind.Quiet or OsdKind.Turbo or OsdKind.Full or OsdKind.Eco or OsdKind.Charging or OsdKind.Travel;
 
     private void DrawIcon(Graphics g, OsdKind kind, RectangleF r)
     {
@@ -166,6 +166,7 @@ public sealed class OsdForm : Form
             case OsdKind.Full:     SvgIcons.DrawRocket(g, r, _gaugeT, 1f); return;
             case OsdKind.Eco:      SvgIcons.DrawMoonTwinkle(g, r, _gaugeT, 1f); return;
             case OsdKind.Charging: SvgIcons.DrawChargingPulse(g, r, _gaugeT); return;
+            case OsdKind.Travel:   SvgIcons.DrawTravelPulse(g, r, _gaugeT); return;
         }
         string name = kind switch
         {
@@ -189,6 +190,8 @@ public sealed class OsdForm : Form
             OsdKind.FnLockOff       => SvgIcons.FnLockOff,
             OsdKind.RefreshRate     => SvgIcons.RefreshRate,
             OsdKind.RefreshRateOff  => SvgIcons.RefreshRateOff,
+            OsdKind.Travel          => SvgIcons.Travel,
+            OsdKind.TravelOff       => SvgIcons.TravelOff,
             _ => SvgIcons.Settings,
         };
         SvgIcons.Draw(g, name, r);

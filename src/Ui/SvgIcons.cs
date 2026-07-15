@@ -17,6 +17,9 @@ public static class SvgIcons
     public const string BatteryDischarge = "battery-discharge";
     public const string BatterySaverOn = "battery-saver-on";
     public const string BatterySaverOff = "battery-saver-off";
+    public const string Travel = "travel";           // чемодан с молнией — «В дорогу» включён (статично)
+    public const string TravelOff = "travel-off";    // чемодан без молнии — «В дорогу» выключен / корпус для анимации
+    public const string TravelBolt = "travel-bolt";  // молния отдельно — мигает поверх travel-off
     public const string KeyboardBacklight = "keyboard-backlight";
     public const string KeyboardBacklightOff = "keyboard-backlight-off";
     public const string KeyboardBacklight50 = "keyboard-backlight-50";
@@ -184,6 +187,16 @@ public static class SvgIcons
         DrawBitmap(g, Render(BatteryChargingBody, size), dest, opacity);
         float a = 0.55f + 0.45f * (0.5f + 0.5f * MathF.Sin(t * 4.2f));
         DrawBitmap(g, Render(BatteryChargingBolt, size), dest, opacity * a);
+    }
+
+    /// <summary>«В дорогу» (заряд до 100%): жёлтый чемодан статичен, молния на нём мигает.</summary>
+    public static void DrawTravelPulse(Graphics g, RectangleF r, float t, float opacity = 1f)
+    {
+        int size = (int)Math.Round(Math.Min(r.Width, r.Height));
+        var dest = CenteredDest(r, size);
+        DrawBitmap(g, Render(TravelOff, size), dest, opacity);          // корпус без молнии
+        float a = 0.2f + 0.8f * (0.5f + 0.5f * MathF.Sin(t * 4.5f));    // молния мигает
+        DrawBitmap(g, Render(TravelBolt, size), dest, opacity * a);
     }
 
     /// <summary>

@@ -24,6 +24,8 @@
   <ItemGroup>
     <!-- SVG-иконки (OSD + трей) встраиваются в сборку; имена файлов уникальны -->
     <EmbeddedResource Include="..\assets\svg\**\*.svg" LogicalName="svg.%(Filename).svg" />
+    <!-- Звуки (WAV) встраиваются в сборку -->
+    <EmbeddedResource Include="..\assets\sound\**\*.wav" LogicalName="sound.%(Filename).wav" />
   </ItemGroup>
 
 </Project>

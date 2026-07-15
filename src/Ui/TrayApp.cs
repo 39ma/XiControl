@@ -29,6 +29,10 @@ public sealed class TrayApp : IDisposable
     private PerfMode? _iconMode;
     private bool _iconInit;
 
+    // «В дорогу»: пока режим активен и на зарядке — ждём 100%, тогда OSD (+джингл). Опрос раз в 5 с.
+    private readonly System.Windows.Forms.Timer _travelTimer = new() { Interval = 5000 };
+    private bool _travelNotified;
+
     private readonly System.Windows.Forms.Timer _miHold = new() { Interval = 400 };  // порог «долгого» нажатия Mi
     private readonly System.Windows.Forms.Timer _miClick = new() { Interval = 300 }; // окно ожидания двойного клика
     private bool _miHandled;
@@ -73,7 +77,8 @@ public sealed class TrayApp : IDisposable
         _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(); };
 
         // Страж заряда: применяет желаемое состояние на старте и после сна/смены питания
-        _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare);
+        // «В дорогу» временно снимает защиту (заряд до 100%), поэтому гард бережёт 80% только когда travel выключен
+        _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare && !_cfg.TravelMode);
         _guard.Reapply();
 
         // Авто-герцовка: частота экрана по питанию (сеть/батарея) на старте и при его смене
@@ -86,6 +91,15 @@ public sealed class TrayApp : IDisposable
         {
             if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => UpdateTrayIcon()));
         };
+
+        // «В дорогу»: следим за достижением 100%. Если стартовали посреди режима — на зарядке
+        // продолжаем ждать, иначе (уже отключены) сбрасываем: режим живёт только на зарядке.
+        _travelTimer.Tick += (_, _) => CheckTravelFull();
+        if (_cfg.TravelMode)
+        {
+            if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travelTimer.Start();
+            else { _cfg.TravelMode = false; _cfg.Save(); }
+        }
 
         // Режим при старте (прошивка сбрасывает его на ребуте):
         //  • PowerProfiles → применить профиль текущего питания (режим + яркость);
@@ -119,6 +133,7 @@ public sealed class TrayApp : IDisposable
         _panel = new QuickPanelForm(_mifs, _cfg);
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
+        _panel.TravelChanged = OnPanelTravelChanged;
         _miHold.Tick += (_, _) => OnMiHold();
         _miClick.Tick += (_, _) => OnMiClickTimeout();
         _events.KeyPressed += OnKey;
@@ -318,6 +333,15 @@ public sealed class TrayApp : IDisposable
         bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
         if (online == _lastOnline) return;   // только реальный переход AC↔батарея
         _lastOnline = online;
+
+        // «В дорогу»: отключили зарядник — режим сбрасывается (следующее подключение снова 80%);
+        // подключили при активном режиме — заново ждём 100%.
+        if (_cfg.TravelMode)
+        {
+            if (!online) DisableTravel();
+            else { _travelNotified = false; _travelTimer.Start(); }
+        }
+
         if (_osd.IsHandleCreated) _osd.BeginInvoke(() => ShowPowerOsd(online));
         else ShowPowerOsd(online);
     }
@@ -339,7 +363,9 @@ public sealed class TrayApp : IDisposable
 
         if (online)
         {
-            if (_cfg.ChargeCare)
+            if (_cfg.TravelMode)
+                _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub")); // «Режим В дорогу» / «Заряжаем до 100%»
+            else if (_cfg.ChargeCare)
                 _osd.Flash(OsdKind.ChargingLimited, Loc.T("osd.charging.limited", Mifs.ChargeThresholdPercent), sub);
             else
                 _osd.Flash(OsdKind.Charging, Loc.T("osd.charging"), sub);
@@ -381,6 +407,11 @@ public sealed class TrayApp : IDisposable
         // состояние читаем в момент клика: пока меню висело, его мог сменить ChargeGuard
         charge.Click += (_, _) => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
         _menu.Items.Add(charge);
+
+        // «В дорогу»: временный заряд до 100% поверх «беречь 80%» (неактивно при постоянном 100%)
+        var travel = new ToolStripMenuItem(Loc.T("menu.travel")) { Checked = _cfg.TravelMode, Enabled = _cfg.ChargeCare };
+        travel.Click += (_, _) => SetTravel(!_cfg.TravelMode);
+        _menu.Items.Add(travel);
 
         // --- Режим совы (не спать) — если фича не скрыта конфигом ---
         if (_cfg.OwlMode)
@@ -495,6 +526,11 @@ public sealed class TrayApp : IDisposable
         owlEnable.Click += (_, _) => ToggleOwlFeature(!_cfg.OwlMode);
         settings.DropDownItems.Add(owlEnable);
 
+        // звук готовности режима «В дорогу» (джингл при 100%)
+        var travelSound = new ToolStripMenuItem(Loc.T("menu.travel.sound")) { Checked = _cfg.TravelSound };
+        travelSound.Click += (_, _) => { _cfg.TravelSound = !_cfg.TravelSound; _cfg.Save(); };
+        settings.DropDownItems.Add(travelSound);
+
         TintDropDown(settings);
         _menu.Items.Add(settings);
 
@@ -538,6 +574,8 @@ public sealed class TrayApp : IDisposable
 
     private void ToggleCare(bool on)
     {
+        // ручная смена лимита заряда отменяет временный режим «В дорогу»
+        if (_cfg.TravelMode) { _cfg.TravelMode = false; _travelTimer.Stop(); _travelNotified = false; }
         Safe(() => { _mifs.SetChargeCare(on); return true; }, false);
         _cfg.ChargeCare = on;
         _cfg.Save();
@@ -546,6 +584,58 @@ public sealed class TrayApp : IDisposable
         else
             _osd.Flash(on ? OsdKind.CareOn : OsdKind.CareOff,
                        on ? Loc.T("osd.care.on") : Loc.T("osd.care.off"));
+    }
+
+    // «В дорогу» (пункт меню): временный заряд до 100% поверх «беречь 80%».
+    // Доступно только при базовом ChargeCare=true (при постоянном 100% смысла нет).
+    private void SetTravel(bool on)
+    {
+        if (on && !_cfg.ChargeCare) return;
+        _cfg.TravelMode = on;
+        _cfg.Save();
+        _travelNotified = false;
+        // on → снять защиту (заряд до 100); off → вернуть базовый режим заряда
+        Safe(() => { _mifs.SetChargeCare(on ? false : _cfg.ChargeCare); return true; }, false);
+        if (on && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travelTimer.Start();
+        else _travelTimer.Stop();
+        if (_panel.Visible) _panel.RefreshUi();
+        else if (on) _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub"));
+        else _osd.Flash(OsdKind.TravelOff, Loc.T("osd.travel.off"));
+    }
+
+    // Сброс «В дорогу» без OSD (отключили зарядник): ChargeGuard сам вернёт «беречь 80%».
+    private void DisableTravel()
+    {
+        _cfg.TravelMode = false;
+        _cfg.Save();
+        _travelTimer.Stop();
+        _travelNotified = false;
+        if (_panel.Visible) _panel.RefreshUi();
+    }
+
+    // Панель сама переключила «В дорогу» (config + firmware) — на нас только наблюдение за 100%.
+    private void OnPanelTravelChanged()
+    {
+        _travelNotified = false;
+        if (_cfg.TravelMode && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online)
+            _travelTimer.Start();
+        else
+            _travelTimer.Stop();
+    }
+
+    // Батарея дозарядилась до 100% в режиме «В дорогу» → OSD (+джингл), один раз за сессию режима.
+    private void CheckTravelFull()
+    {
+        if (!_cfg.TravelMode) { _travelTimer.Stop(); return; }
+        if (_travelNotified) return;
+        var ps = SystemInformation.PowerStatus;
+        if (ps.PowerLineStatus != PowerLineStatus.Online) return; // не на зарядке — ждём
+        float f = ps.BatteryLifePercent;
+        if (f < 0.999f || f > 1.001f) return; // ждём ровно 100% (значение вне [0..1] = «неизвестно»)
+        _travelNotified = true;
+        _travelTimer.Stop();
+        _osd.Flash(OsdKind.Travel, Loc.T("osd.travel.ready"));
+        if (_cfg.TravelSound) Sound.PlayTravelReady();
     }
 
     private void SetMode(PerfMode mode, string key)
@@ -762,6 +852,7 @@ public sealed class TrayApp : IDisposable
         SystemEvents.PowerModeChanged -= OnPower;
         SystemEvents.UserPreferenceChanged -= OnUserPref;
         _iconTimer.Dispose();
+        _travelTimer.Dispose();
         _miHold.Dispose();
         _miClick.Dispose();
         _events.Dispose();

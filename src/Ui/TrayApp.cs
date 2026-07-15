@@ -16,6 +16,7 @@ public sealed class TrayApp : IDisposable
     private bool _dark = Theme.IsDark();
     private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
+    private readonly PowerProfilesGuard _profiles;
     private readonly OsdForm _osd = new();
     private readonly MifsEventWatcher _events = new();
     private readonly QuickPanelForm _panel;
@@ -50,6 +51,7 @@ public sealed class TrayApp : IDisposable
         _mifs = mifs;
         _cfg = cfg;
         ApplyModeVisibility();
+        SanitizeProfiles(); // профиль со скрытым режимом снимается ещё до первого применения
 
         // пока показываем состояние из конфига; реальное уточняем в фоне —
         // schtasks /query может блокировать до 10 с, старту это ни к чему
@@ -96,6 +98,12 @@ public sealed class TrayApp : IDisposable
         _ = _osd.Handle; // форсируем создание хэндла для маршалинга событий в UI-поток
         _lastOnline = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
         SystemEvents.PowerModeChanged += OnPower;
+
+        // Профили питания: режим и яркость по источнику (сеть/батарея). Применяем и на старте —
+        // профиль текущего источника важнее «режима при старте» выше (он более конкретный).
+        _profiles = new PowerProfilesGuard(_mifs, _cfg, _osd);
+        _profiles.Applied = () => UpdateTrayIcon();
+        _profiles.Reapply();
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
         _panel = new QuickPanelForm(_mifs, _cfg);
@@ -310,6 +318,10 @@ public sealed class TrayApp : IDisposable
         float f = ps.BatteryLifePercent;
         string? sub = (f >= 0f && f <= 1f) ? Loc.T("osd.level", (int)Math.Round(f * 100)) : null;
 
+        // профиль питания задан — дописываем режим, который сейчас применит PowerProfilesGuard
+        if ((online ? _cfg.AcPerfMode : _cfg.BatteryPerfMode) is PerfMode pm && ModeKey(pm) is string pk)
+            sub = sub is null ? Loc.T(pk) : $"{sub} • {Loc.T(pk)}";
+
         if (online)
         {
             if (_cfg.ChargeCare)
@@ -362,6 +374,17 @@ public sealed class TrayApp : IDisposable
             owl.Click += (_, _) => ToggleAwake();
             _menu.Items.Add(owl);
         }
+
+        // --- Профили питания: режим на сети/батарее + память яркости ---
+        var profiles = new ToolStripMenuItem(Loc.T("menu.profiles"));
+        profiles.DropDownItems.Add(ProfileMenu(ac: true));
+        profiles.DropDownItems.Add(ProfileMenu(ac: false));
+        profiles.DropDownItems.Add(new ToolStripSeparator());
+        var brightness = new ToolStripMenuItem(Loc.T("menu.profiles.brightness")) { Checked = _cfg.RememberBrightness };
+        brightness.Click += (_, _) => ToggleBrightnessMemory();
+        profiles.DropDownItems.Add(brightness);
+        TintDropDown(profiles);
+        _menu.Items.Add(profiles);
 
         // --- Монитор (Вт / CPU / RAM) ---
         var monitor = new ToolStripMenuItem(Loc.T("menu.monitor")) { Checked = _monitor?.Visible == true };
@@ -540,7 +563,22 @@ public sealed class TrayApp : IDisposable
         _cfg.FullSpeedMode = full;
         _cfg.Save();
         ApplyModeVisibility();
+        SanitizeProfiles(); // скрыли режим — профили с ним не должны продолжать включать его
         _panel.ReloadModes();
+    }
+
+    // Профили питания не могут ссылаться на скрытые режимы (иначе «скрытый» режим продолжал бы
+    // включаться на каждом переходе) и на «Полную мощность» для батареи (прошивка не примет).
+    // Невалидный профиль снимается («Не менять»).
+    private void SanitizeProfiles()
+    {
+        bool Visible(PerfMode m) => _modes.Any(x => x.mode == m);
+        bool changed = false;
+        if (_cfg.AcPerfMode is PerfMode a && !Visible(a))
+        { _cfg.AcPerfMode = null; changed = true; }
+        if (_cfg.BatteryPerfMode is PerfMode b && (!Visible(b) || b == PerfMode.FullSpeed))
+        { _cfg.BatteryPerfMode = null; changed = true; }
+        if (changed) _cfg.Save();
     }
 
     // Применить желаемый стартовый режим; если прошивка не приняла (напр. Full-speed на батарее) — Auto.
@@ -580,6 +618,46 @@ public sealed class TrayApp : IDisposable
             _cfg.RestoreMode = false;
         }
         _cfg.Save();
+    }
+
+    // Подменю профиля для источника питания: «Не менять» + видимые режимы
+    private ToolStripMenuItem ProfileMenu(bool ac)
+    {
+        PerfMode? current = ac ? _cfg.AcPerfMode : _cfg.BatteryPerfMode;
+        string currentName = current is PerfMode cm && ModeKey(cm) is string mk
+            ? Loc.T(mk) : Loc.T("menu.profiles.none");
+        var root = new ToolStripMenuItem($"{Loc.T(ac ? "menu.profiles.ac" : "menu.profiles.battery")}:  {currentName}");
+
+        var none = new ToolStripMenuItem(Loc.T("menu.profiles.none")) { Checked = current is null };
+        none.Click += (_, _) => SetProfile(ac, null);
+        root.DropDownItems.Add(none);
+        // «Полная мощность» на батарее прошивкой не принимается — для этого профиля не предлагаем
+        var modes = ac ? _modes : _modes.Where(m => m.mode != PerfMode.FullSpeed);
+        foreach (var (key, mode) in modes)
+        {
+            var item = new ToolStripMenuItem(Loc.T(key)) { Checked = current == mode };
+            item.Click += (_, _) => SetProfile(ac, mode);
+            root.DropDownItems.Add(item);
+        }
+        TintDropDown(root);
+        return root;
+    }
+
+    // Задать профиль источника; если это активный сейчас источник — применить сразу
+    private void SetProfile(bool ac, PerfMode? mode)
+    {
+        if (ac) _cfg.AcPerfMode = mode; else _cfg.BatteryPerfMode = mode;
+        _cfg.Save();
+        bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
+        if (mode is not null && online == ac) _profiles.Reapply();
+    }
+
+    // Память яркости: при включении сразу запоминаем текущую для активного источника
+    private void ToggleBrightnessMemory()
+    {
+        _cfg.RememberBrightness = !_cfg.RememberBrightness;
+        _cfg.Save();
+        if (_cfg.RememberBrightness) _profiles.SeedBrightness();
     }
 
     // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится
@@ -636,6 +714,7 @@ public sealed class TrayApp : IDisposable
         _miClick.Dispose();
         _events.Dispose();
         _guard.Dispose();
+        _profiles.Dispose();
         _osd.Dispose();
         _panel.Dispose();
         _monitor?.Dispose();

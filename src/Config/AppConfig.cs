@@ -59,6 +59,28 @@ public sealed class AppConfig
     /// <summary>Исходное действие крышки (AC) до включения «Не спать» — для восстановления, в т.ч. после сбоя.</summary>
     public int? AwakeSavedLidAc { get; set; }
 
+    /// <summary>
+    /// Профили питания: режим производительности, включаемый при переходе на сеть (AcPerfMode)
+    /// или батарею (BatteryPerfMode). null — на этом источнике режим не менять. Применяются
+    /// при смене питания, выходе из сна и старте приложения (важнее «режима при старте»).
+    /// Выбираются в меню трея: «Профили питания».
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PerfMode? AcPerfMode { get; set; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PerfMode? BatteryPerfMode { get; set; }
+
+    /// <summary>
+    /// Запоминать яркость экрана отдельно для сети и батареи и восстанавливать её при смене
+    /// источника питания: выставил 80% на зарядке — при следующем подключении снова 80%.
+    /// </summary>
+    public bool RememberBrightness { get; set; } = false;
+
+    /// <summary>Последняя яркость (%) на сети/батарее — заполняются автоматически.</summary>
+    public int? AcBrightness { get; set; }
+    public int? BatteryBrightness { get; set; }
+
     /// <summary>Позиция окна «Монитор» (виджет перетаскивается мышью); null — по центру.</summary>
     public int? MonitorX { get; set; }
     public int? MonitorY { get; set; }

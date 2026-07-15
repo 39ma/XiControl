@@ -40,8 +40,8 @@ public sealed class MonitorForm : Form
     private long _prevIdle, _prevKernel, _prevUser;
     private float _ramUsedGb, _ramTotalGb;
 
-    private Rectangle _close, _viewBtn;
-    private bool _closeHover, _viewHover;
+    private Rectangle _close, _viewBtn, _expandBtn;
+    private bool _closeHover, _viewHover, _expandHover;
 
     // вид виджета: полный (графики) / мини (строка индикаторов) / только ватты
     private enum ViewKind { Full, Mini, Power }
@@ -115,24 +115,27 @@ public sealed class MonitorForm : Form
         int w, h;
         switch (_view)
         {
-            case ViewKind.Mini: // строка Power | CPU | RAM + кнопки «вид»/крестик справа
-                w = Sc(16) + Sc(104) + Sc(8) + Sc(72) + Sc(8) + Sc(72) + Sc(8) + Sc(18) + Sc(6) + Sc(18) + Sc(10);
+            case ViewKind.Mini: // Power | CPU | RAM + [развернуть]/[вид]/[крестик] справа
+                w = Sc(16) + Sc(104) + Sc(8) + Sc(72) + Sc(8) + Sc(72) + Sc(8) + Sc(18) + Sc(6) + Sc(18) + Sc(6) + Sc(18) + Sc(10);
                 h = Sc(56);
                 _corner = Sc(14);
                 _close = new Rectangle(w - Sc(10) - Sc(18), (h - Sc(18)) / 2, Sc(18), Sc(18));
                 _viewBtn = new Rectangle(_close.X - Sc(6) - Sc(18), _close.Y, Sc(18), Sc(18));
+                _expandBtn = new Rectangle(_viewBtn.X - Sc(6) - Sc(18), _close.Y, Sc(18), Sc(18)); // слева от «вид» — сразу в полный
                 break;
             case ViewKind.Power: // только ватты; кнопок нет — дальше по кругу двойным кликом
                 w = Sc(116); h = Sc(46);
                 _corner = Sc(12);
                 _close = Rectangle.Empty;
                 _viewBtn = Rectangle.Empty;
+                _expandBtn = Rectangle.Empty;
                 break;
             default:
                 w = Sc(400); h = Sc(96) * 3 + Sc(52);
                 _corner = Sc(18);
                 _close = new Rectangle(w - Sc(16) - Sc(22), Sc(14), Sc(22), Sc(22)); // как в панели
                 _viewBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
+                _expandBtn = Rectangle.Empty; // уже полный — разворачивать некуда
                 break;
         }
         Size = new Size(w, h);
@@ -142,16 +145,19 @@ public sealed class MonitorForm : Form
         old?.Dispose();
     }
 
-    // Полный → мини → только ватты → снова полный; выбор запоминается в конфиге
-    private void CycleView()
+    // Полный → мини → только ватты → снова полный (кнопка «вид» / двойной клик)
+    private void CycleView() => SetView(_view switch
     {
-        _view = _view switch
-        {
-            ViewKind.Full => ViewKind.Mini,
-            ViewKind.Mini => ViewKind.Power,
-            _ => ViewKind.Full,
-        };
-        _cfg.MonitorView = _view switch { ViewKind.Mini => "mini", ViewKind.Power => "power", _ => null };
+        ViewKind.Full => ViewKind.Mini,
+        ViewKind.Mini => ViewKind.Power,
+        _ => ViewKind.Full,
+    });
+
+    // Переключить на конкретный вид; выбор запоминается в конфиге
+    private void SetView(ViewKind v)
+    {
+        _view = v;
+        _cfg.MonitorView = v switch { ViewKind.Mini => "mini", ViewKind.Power => "power", _ => null };
         _cfg.Save();
         ApplyView();
         Invalidate();
@@ -182,7 +188,7 @@ public sealed class MonitorForm : Form
         {
             long lp = m.LParam.ToInt64();
             var p = PointToClient(new Point(unchecked((short)(lp & 0xFFFF)), unchecked((short)((lp >> 16) & 0xFFFF))));
-            if (!_close.Contains(p) && !_viewBtn.Contains(p)) m.Result = HTCAPTION;
+            if (!_close.Contains(p) && !_viewBtn.Contains(p) && !_expandBtn.Contains(p)) m.Result = HTCAPTION;
         }
     }
     protected override void OnKeyDown(KeyEventArgs e)
@@ -195,6 +201,7 @@ public sealed class MonitorForm : Form
         base.OnMouseClick(e);
         if (_close.Contains(e.Location)) Hide();
         else if (_viewBtn.Contains(e.Location)) CycleView();
+        else if (_expandBtn.Contains(e.Location)) SetView(ViewKind.Full); // из мини — сразу в полный
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -204,6 +211,8 @@ public sealed class MonitorForm : Form
         if (h != _closeHover) { _closeHover = h; Invalidate(_close); }
         bool v = _viewBtn.Contains(e.Location);
         if (v != _viewHover) { _viewHover = v; Invalidate(_viewBtn); }
+        bool x = _expandBtn.Contains(e.Location);
+        if (x != _expandHover) { _expandHover = x; Invalidate(_expandBtn); }
     }
 
     protected override void OnMouseLeave(EventArgs e)
@@ -211,6 +220,7 @@ public sealed class MonitorForm : Form
         base.OnMouseLeave(e);
         if (_closeHover) { _closeHover = false; Invalidate(_close); }
         if (_viewHover) { _viewHover = false; Invalidate(_viewBtn); }
+        if (_expandHover) { _expandHover = false; Invalidate(_expandBtn); }
     }
 
     // ---------- семплирование ----------
@@ -330,6 +340,7 @@ public sealed class MonitorForm : Form
         x = MiniCell(g, x, Sc(72), "CPU", _cpu.Count > 0 && !float.IsNaN(_cpu[^1]) ? $"{_cpu[^1]:0}%" : "—", CpuCol);
         MiniCell(g, x, Sc(72), "RAM", _ram.Count > 0 ? $"{_ram[^1]:0}%" : "—", RamCol);
 
+        Draw.ExpandButton(g, _expandBtn, _expandHover); // развернуть в полный
         Draw.ViewButton(g, _viewBtn, _viewHover);
         Draw.CloseButton(g, _close, _closeHover);
     }

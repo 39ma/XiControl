@@ -67,6 +67,37 @@ public static class Draw
         g.DrawRectangle(pen, r.X + w * 0.44f, r.Y + h * 0.48f, w * 0.34f, h * 0.28f);
     }
 
+    /// <summary>Кнопка «развернуть в полный» (fullscreen): диагональ + уголки-стрелки в противоположные углы. Hover — синяя плашка.</summary>
+    public static void ExpandButton(Graphics g, Rectangle r, bool hover)
+    {
+        if (hover)
+        {
+            using var b = new SolidBrush(Color.FromArgb(60, 120, 190));
+            using var path = Rounded(r, r.Width * 0.23f);
+            g.FillPath(b, path);
+        }
+        using var pen = new Pen(hover ? Color.White : Color.FromArgb(150, 150, 155), 1.8f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        float w = r.Width, h = r.Height;
+        g.DrawLine(pen, r.X + w * 0.34f, r.Y + h * 0.34f, r.X + w * 0.66f, r.Y + h * 0.66f);
+        g.DrawLines(pen,
+        [
+            new PointF(r.X + w * 0.30f, r.Y + h * 0.52f),
+            new PointF(r.X + w * 0.30f, r.Y + h * 0.30f),
+            new PointF(r.X + w * 0.52f, r.Y + h * 0.30f),
+        ]);
+        g.DrawLines(pen,
+        [
+            new PointF(r.X + w * 0.70f, r.Y + h * 0.48f),
+            new PointF(r.X + w * 0.70f, r.Y + h * 0.70f),
+            new PointF(r.X + w * 0.48f, r.Y + h * 0.70f),
+        ]);
+    }
+
     /// <summary>Скруглённый прямоугольник (путь надо Dispose-ить).</summary>
     public static GraphicsPath Rounded(RectangleF r, float radius)
     {

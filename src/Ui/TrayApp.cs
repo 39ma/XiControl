@@ -614,7 +614,7 @@ public sealed class TrayApp : IDisposable
             _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.on"),
                        Loc.T("osd.hz.on.sub", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate));
         else
-            _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.off"));
+            _osd.Flash(OsdKind.RefreshRateOff, Loc.T("osd.hz.off"));
     }
 
     // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится

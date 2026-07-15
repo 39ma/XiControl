@@ -386,7 +386,8 @@ public sealed class QuickPanelForm : Form
         // авто-герцовка: монитор с круговыми стрелками, активна при включённой опции
         DrawCell(g, _hzCell, _cfg.AutoRefreshRate, _hover == 15, Blue, Sc(10));
         float hzIcon = Math.Min(_hzCell.Width, _hzCell.Height) - Sc(8);
-        SvgIcons.Draw(g, SvgIcons.RefreshRate,
+        SvgIcons.Draw(g,
+            _cfg.AutoRefreshRate ? SvgIcons.RefreshRate : SvgIcons.RefreshRateOff,
             new RectangleF(_hzCell.X + (_hzCell.Width - hzIcon) / 2f, _hzCell.Y + (_hzCell.Height - hzIcon) / 2f, hzIcon, hzIcon),
             _cfg.AutoRefreshRate || _hover == 15 ? 1f : 0.6f);
 

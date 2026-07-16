@@ -20,8 +20,12 @@ public sealed class AppConfig
     /// </summary>
     public bool TravelMode { get; set; } = false;
 
-    /// <summary>Проигрывать «аэропортовый» джингл при достижении 100% в режиме «В дорогу».</summary>
+    /// <summary>Проигрывать джингл при достижении 100% в режиме «В дорогу».</summary>
     public bool TravelSound { get; set; } = true;
+
+    /// <summary>Свой WAV для звука готовности «В дорогу» (поддерживаются `%ПЕРЕМЕННЫЕ%`).
+    /// Пусто или файл не найден → встроенный джингл. Только WAV/PCM. Правится в config.json.</summary>
+    public string? TravelSoundFile { get; set; }
 
     /// <summary>
     /// Восстанавливать выбранный режим производительности после перезагрузки.

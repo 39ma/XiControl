@@ -149,6 +149,13 @@ dotnet publish src/XiControl.csproj -c Release -r win-x64 --self-contained -p:Pu
 Пилюли 80/100 показывают **базовую** настройку — «В дорогу» это временный оверрайд поверх неё
 (driver-free, тот же WMI-канал заряда). В `config.json`: `"TravelMode"`, `"TravelSound"`.
 
+Свой звук готовности — путь к WAV в `config.json` (пусто или файл не найден → встроенный джингл;
+поддерживаются `%ПЕРЕМЕННЫЕ%`; только WAV/PCM):
+
+```json
+"TravelSoundFile": "C:\\Users\\Me\\Sounds\\ready.wav"
+```
+
 ### Скрыть ненужные режимы
 
 Проще всего — галочки в меню трея: **Настройки → Показывать «Эко» / «Полную

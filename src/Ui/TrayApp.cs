@@ -635,7 +635,7 @@ public sealed class TrayApp : IDisposable
         _travelNotified = true;
         _travelTimer.Stop();
         _osd.Flash(OsdKind.Travel, Loc.T("osd.travel.ready"));
-        if (_cfg.TravelSound) Sound.PlayTravelReady();
+        if (_cfg.TravelSound) Sound.PlayTravelReady(_cfg.TravelSoundFile);
     }
 
     private void SetMode(PerfMode mode, string key)

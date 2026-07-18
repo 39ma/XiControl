@@ -60,7 +60,13 @@ public sealed class TrayApp : IDisposable
         // пока показываем состояние из конфига; реальное уточняем в фоне —
         // schtasks /query может блокировать до 10 с, старту это ни к чему
         _autoStart = cfg.AutoStart;
-        Task.Run(() => _autoStart = Safe(AutoStart.IsEnabled, cfg.AutoStart));
+        Task.Run(() =>
+        {
+            _autoStart = Safe(AutoStart.IsEnabled, cfg.AutoStart);
+            // самопочинка: после обновления/переноса exe задача указывает на пропавший путь
+            // и молча не стартует — пересоздаём на текущий exe
+            if (_autoStart) Safe(() => { AutoStart.RepairIfBroken(); return true; }, true);
+        });
 
         _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
         _menu.Opening += (_, _) => BuildMenu();

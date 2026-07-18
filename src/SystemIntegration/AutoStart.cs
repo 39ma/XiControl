@@ -19,6 +19,30 @@ public static class AutoStart
 
     public static bool IsEnabled() => Run("/query", "/tn", TaskName) == 0;
 
+    /// <summary>
+    /// Самопочинка: если задача указывает на exe, которого больше нет (обновили версию,
+    /// перенесли portable-exe) — автозапуск молча перестаёт работать. Пересоздаём задачу
+    /// на текущий exe. Вызывается один раз на старте, когда задача существует.
+    /// </summary>
+    public static void RepairIfBroken()
+    {
+        var cmd = TaskCommand();
+        if (cmd is null || File.Exists(cmd)) return;                  // задачи нет или путь живой
+        if (Environment.ProcessPath is null) return;
+        Log.Write($"AutoStart: задача указывает на пропавший exe ({cmd}) — пересоздаю на текущий");
+        Enable();
+    }
+
+    /// <summary>Путь exe в существующей задаче; null — задачи нет / не разобрали XML.</summary>
+    private static string? TaskCommand()
+    {
+        var xml = RunRead("/query", "/tn", TaskName, "/xml");
+        if (xml is null) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(xml, @"<Command>\s*(.*?)\s*</Command>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        return m.Success ? System.Net.WebUtility.HtmlDecode(m.Groups[1].Value) : null;
+    }
+
     public static void Set(bool enabled)
     {
         if (enabled) Enable(); else Disable();
@@ -38,6 +62,32 @@ public static class AutoStart
     }
 
     private static bool Disable() => Run("/delete", "/tn", TaskName, "/f") == 0;
+
+    /// <summary>stdout команды при успехе, иначе null.</summary>
+    private static string? RunRead(params string[] args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = SchTasks,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+
+            using var p = Process.Start(psi);
+            if (p is null) return null;
+            string stdout = p.StandardOutput.ReadToEnd();
+            _ = p.StandardError.ReadToEnd();
+            p.WaitForExit(10000);
+            return p.HasExited && p.ExitCode == 0 ? stdout : null;
+        }
+        catch (Exception ex) { Log.Ex("AutoStart.RunRead", ex); return null; }
+    }
 
     private static int Run(params string[] args)
     {

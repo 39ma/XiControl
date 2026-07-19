@@ -64,9 +64,11 @@ public sealed class PowerProfileGuard : IDisposable
 
     private void Apply()
     {
-        if (!_cfg.PowerProfiles) return;
+        // режим держат «Профили питания», яркость — самостоятельная опция «Запоминать яркость»
+        // (может работать и без профилей). Нечего делать — выходим, не будим пул.
+        if (!_cfg.PowerProfiles && !_cfg.RememberBrightness) return;
         bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
-        PerfMode? wantMode = online ? _cfg.AcPerfMode : _cfg.BatteryPerfMode;
+        PerfMode? wantMode = _cfg.PowerProfiles ? (online ? _cfg.AcPerfMode : _cfg.BatteryPerfMode) : null;
         int? wantBright = _cfg.RememberBrightness ? (online ? _cfg.AcBrightness : _cfg.BatteryBrightness) : null;
 
         // WMI-вызовы (смена режима + яркость) — в фон, чтобы не держать UI-поток
@@ -89,7 +91,7 @@ public sealed class PowerProfileGuard : IDisposable
     // пользователь поменял яркость — запомнить её в слот текущего питания (но не в окно «затишья»)
     private void OnBrightnessChanged(int level)
     {
-        if (!_cfg.PowerProfiles || !_cfg.RememberBrightness) return;
+        if (!_cfg.RememberBrightness) return; // яркость независима от «Профилей питания»
         if (Environment.TickCount - _settleUntil < 0) return; // ещё «затишье» после смены питания
 
         bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;

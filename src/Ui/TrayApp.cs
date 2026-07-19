@@ -125,6 +125,10 @@ public sealed class TrayApp : IDisposable
             ApplyStartMode(forced);
         }
 
+        // «Запоминать яркость» — самостоятельная опция (без профилей): применить яркость
+        // текущего питания на старте (при профилях это уже сделал _powerGuard.Reapply выше).
+        if (_cfg.RememberBrightness && !_cfg.PowerProfiles) _powerGuard.Reapply();
+
         // «Режим совы»: восстановить после сбоя, включить заново, либо погасить, если фичу отключили
         if (_cfg.Awake && !_cfg.OwlMode) { AwakeMode.Disable(_cfg); _cfg.Awake = false; _cfg.Save(); }
         else if (_cfg.Awake) { AwakeMode.Enable(_cfg); _cfg.Save(); }
@@ -453,91 +457,9 @@ public sealed class TrayApp : IDisposable
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        // --- Настройки (подменю: язык, автозапуск) ---
-        var settings = new ToolStripMenuItem(Loc.T("menu.settings"));
-
-        var lang = new ToolStripMenuItem(Loc.T("menu.language"))
-        {
-            // единственная иконка в меню — визуальный якорь: найти переключение языка,
-            // не читая подписей (напр. если случайно выбран незнакомый язык)
-            Image = SvgIcons.Render(SvgIcons.TrayLanguage, imgSz, _dark ? DarkPalette.Text : SystemColors.MenuText),
-        };
-        lang.DropDownItems.Add(LangItem("Русский", Lang.Ru));
-        lang.DropDownItems.Add(LangItem("English", Lang.En));
-        lang.DropDownItems.Add(LangItem("中文", Lang.Zh));
-        TintDropDown(lang);
-        settings.DropDownItems.Add(lang);
-
-        var autostart = new ToolStripMenuItem(Loc.T("menu.autostart")) { Checked = _autoStart };
-        autostart.Click += (_, _) => ToggleAutoStart(!_autoStart);
-        settings.DropDownItems.Add(autostart);
-
-        settings.DropDownItems.Add(new ToolStripSeparator());
-
-        // видимость опциональных режимов — применяется сразу, без перезапуска
-        var showEco = new ToolStripMenuItem(Loc.T("menu.show.eco")) { Checked = _cfg.EcoMode };
-        showEco.Click += (_, _) => ToggleModeVisibility(eco: !_cfg.EcoMode, full: _cfg.FullSpeedMode);
-        settings.DropDownItems.Add(showEco);
-
-        var showFull = new ToolStripMenuItem(Loc.T("menu.show.full")) { Checked = _cfg.FullSpeedMode };
-        showFull.Click += (_, _) => ToggleModeVisibility(eco: _cfg.EcoMode, full: !_cfg.FullSpeedMode);
-        settings.DropDownItems.Add(showFull);
-
-        // режим при старте (подменю): «восстанавливать последний» ИЛИ «закрепить текущий» —
-        // взаимоисключающие переключатели (см. SetStartRestore / PinCurrentStartMode)
-        var startMode = new ToolStripMenuItem(Loc.T("menu.startmode"));
-        var restoreLast = new ToolStripMenuItem(Loc.T("menu.startmode.restore")) { Checked = _cfg.RestoreMode };
-        restoreLast.Click += (_, _) => SetStartRestore(!_cfg.RestoreMode);
-        startMode.DropDownItems.Add(restoreLast);
-        var pinCurrent = new ToolStripMenuItem(Loc.T("menu.startmode.pin")) { Checked = _cfg.ForceStartMode is not null };
-        pinCurrent.Click += (_, _) => PinCurrentStartMode();
-        startMode.DropDownItems.Add(pinCurrent);
-        var powerProf = new ToolStripMenuItem(Loc.T("menu.startmode.power")) { Checked = _cfg.PowerProfiles };
-        powerProf.Click += (_, _) => SetPowerProfiles(!_cfg.PowerProfiles);
-        startMode.DropDownItems.Add(powerProf);
-
-        // профили активны — показываем выбор режима на зарядке / от батареи и опцию яркости
-        if (_cfg.PowerProfiles)
-        {
-            startMode.DropDownItems.Add(new ToolStripSeparator());
-            startMode.DropDownItems.Add(ProfilePicker("menu.profile.ac", ac: true, _cfg.AcPerfMode));
-            startMode.DropDownItems.Add(ProfilePicker("menu.profile.battery", ac: false, _cfg.BatteryPerfMode));
-            var remBright = new ToolStripMenuItem(Loc.T("menu.profile.brightness")) { Checked = _cfg.RememberBrightness };
-            remBright.Click += (_, _) => ToggleRememberBrightness();
-            startMode.DropDownItems.Add(remBright);
-        }
-        TintDropDown(startMode);
-        settings.DropDownItems.Add(startMode);
-
-        settings.DropDownItems.Add(new ToolStripSeparator());
-
-        // раскладка Mi-кнопки: галочка = клик переключает режимы (двойной — заряд), снята = наоборот
-        var miPerf = new ToolStripMenuItem(Loc.T("menu.mi.perf")) { Checked = !MiChargeFirst };
-        miPerf.Click += (_, _) => { _cfg.MiShortPress = MiChargeFirst ? "modes" : "charge"; _cfg.Save(); };
-        settings.DropDownItems.Add(miPerf);
-
-        // двойной клик Mi: снята — жест отключён, зато одинарный мгновенный
-        var miDouble = new ToolStripMenuItem(Loc.T("menu.mi.double")) { Checked = _cfg.MiDoubleClick };
-        miDouble.Click += (_, _) => { _cfg.MiDoubleClick = !_cfg.MiDoubleClick; _cfg.Save(); };
-        settings.DropDownItems.Add(miDouble);
-
-        // клавиша «настройки»: галочка — заряд 80/100, снята — Параметры Windows
-        bool keyCharge = !string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase);
-        var keyMode = new ToolStripMenuItem(Loc.T("menu.key.charge")) { Checked = keyCharge };
-        keyMode.Click += (_, _) => { _cfg.SettingsKey = keyCharge ? "settings" : "charge"; _cfg.Save(); };
-        settings.DropDownItems.Add(keyMode);
-
-        // видимость «режима совы» как фичи (сова в панели + пункт меню)
-        var owlEnable = new ToolStripMenuItem(Loc.T("menu.owl.enable")) { Checked = _cfg.OwlMode };
-        owlEnable.Click += (_, _) => ToggleOwlFeature(!_cfg.OwlMode);
-        settings.DropDownItems.Add(owlEnable);
-
-        // звук готовности режима «В дорогу» (джингл при 100%)
-        var travelSound = new ToolStripMenuItem(Loc.T("menu.travel.sound")) { Checked = _cfg.TravelSound };
-        travelSound.Click += (_, _) => { _cfg.TravelSound = !_cfg.TravelSound; _cfg.Save(); };
-        settings.DropDownItems.Add(travelSound);
-
-        TintDropDown(settings);
+        // --- Настройки (отдельное окно в стиле Win11: все опции по группам) ---
+        var settings = new ToolStripMenuItem(Loc.T("menu.settings") + "…");
+        settings.Click += (_, _) => OpenSettings();
         _menu.Items.Add(settings);
 
         _menu.Items.Add(new ToolStripSeparator());
@@ -565,17 +487,74 @@ public sealed class TrayApp : IDisposable
         _ => null,
     };
 
-    private ToolStripMenuItem LangItem(string title, Lang lang)
+    private SettingsForm? _settings;
+
+    // Открыть окно настроек (лениво создаётся, дальше — из спрятанного состояния).
+    private void OpenSettings()
     {
-        var item = new ToolStripMenuItem(title) { Checked = _cfg.Language == lang };
-        item.Click += (_, _) =>
+        if (_settings is null || _settings.IsDisposed)
         {
-            _cfg.Language = lang;
-            Loc.Current = lang;
-            _cfg.Save();
-            _tray.Text = Loc.T("app.name");
-        };
-        return item;
+            var act = new SettingsActions
+            {
+                GetAutoStart = () => _autoStart,
+                SetAutoStart = ToggleAutoStart,
+                SetLanguage = SetLanguage,
+                SetModeVisibility = ToggleModeVisibility,
+                SetStartStrategy = SetStartStrategy,
+                SetProfileMode = SetProfileMode,
+                SetRememberBrightness = SetRememberBrightnessTo,
+                SetAutoHz = ToggleAutoHz,
+                SetRefreshRates = SetRefreshRates,
+                SetOwlFeature = ToggleOwlFeature,
+            };
+            _settings = new SettingsForm(_cfg, _mifs, act);
+        }
+        _settings.Popup();
+    }
+
+    // Стратегия режима при старте (radio в окне настроек) → в существующую взаимоисключающую логику.
+    private void SetStartStrategy(StartStrategy s)
+    {
+        switch (s)
+        {
+            case StartStrategy.None:
+                _cfg.RestoreMode = false; _cfg.ForceStartMode = null; _cfg.PowerProfiles = false; _cfg.Save();
+                break;
+            case StartStrategy.Restore:
+                SetStartRestore(true);
+                break;
+            case StartStrategy.Pin:
+                if (_cfg.ForceStartMode is null) PinCurrentStartMode(); // закрепить текущий (Авто закрепить нельзя)
+                else { _cfg.RestoreMode = false; _cfg.PowerProfiles = false; _cfg.Save(); }
+                break;
+            case StartStrategy.Profiles:
+                SetPowerProfiles(true);
+                break;
+        }
+    }
+
+    // Частоты авто-герцовки из окна настроек: сохранить и, если режим включён, применить сейчас.
+    private void SetRefreshRates(int ac, int batt)
+    {
+        _cfg.AcRefreshRate = ac;
+        _cfg.BatteryRefreshRate = batt;
+        _cfg.Save();
+        if (_cfg.AutoRefreshRate) _hzGuard.Reapply();
+    }
+
+    // Явная установка «запоминать яркость» (окно даёт тумблер, а не переключатель).
+    private void SetRememberBrightnessTo(bool on)
+    {
+        if (_cfg.RememberBrightness != on) ToggleRememberBrightness();
+    }
+
+    // Смена языка (из окна настроек): применяется сразу; окно само пересоберёт свои подписи.
+    private void SetLanguage(Lang lang)
+    {
+        _cfg.Language = lang;
+        Loc.Current = lang;
+        _cfg.Save();
+        _tray.Text = Loc.T("app.name");
     }
 
     private void ToggleCare(bool on)
@@ -774,25 +753,6 @@ public sealed class TrayApp : IDisposable
             _cfg.BatteryBrightness = lvl;
     }
 
-    // Подменю выбора режима для одного профиля: «Не менять» + все видимые режимы (radio-галочка).
-    private ToolStripMenuItem ProfilePicker(string titleKey, bool ac, PerfMode? current)
-    {
-        var root = new ToolStripMenuItem(Loc.T(titleKey));
-        var none = new ToolStripMenuItem(Loc.T("menu.profile.nochange")) { Checked = current is null };
-        none.Click += (_, _) => SetProfileMode(ac, null);
-        root.DropDownItems.Add(none);
-        root.DropDownItems.Add(new ToolStripSeparator());
-        foreach (var (key, mode) in _modes)
-        {
-            var m = mode;
-            var it = new ToolStripMenuItem(Loc.T(key)) { Checked = current == mode };
-            it.Click += (_, _) => SetProfileMode(ac, m);
-            root.DropDownItems.Add(it);
-        }
-        TintDropDown(root);
-        return root;
-    }
-
     // Авто-герцовка: вкл — сразу применить частоту по текущему питанию, выкл — частоту не трогаем
     private void ToggleAutoHz(bool on)
     {
@@ -867,6 +827,7 @@ public sealed class TrayApp : IDisposable
         _powerGuard.Dispose();
         _osd.Dispose();
         _panel.Dispose();
+        _settings?.Dispose();
         _monitor?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();

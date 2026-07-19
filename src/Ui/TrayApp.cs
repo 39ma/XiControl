@@ -507,7 +507,7 @@ public sealed class TrayApp : IDisposable
                 SetRefreshRates = SetRefreshRates,
                 SetOwlFeature = ToggleOwlFeature,
             };
-            _settings = new SettingsForm(_cfg, _mifs, act);
+            _settings = new SettingsForm(_cfg, act);
         }
         _settings.Popup();
     }
@@ -794,12 +794,17 @@ public sealed class TrayApp : IDisposable
         if (_panel.Visible) _panel.RefreshUi();
     }
 
+    // schtasks может блокировать до 10 с (WaitForExit) — с UI-потока не зовём,
+    // иначе окно настроек зависнет на клике по тумблеру
     private void ToggleAutoStart(bool on)
     {
-        Safe(() => { AutoStart.Set(on); return true; }, false);
-        _autoStart = Safe(AutoStart.IsEnabled, on);  // перечитать реальное состояние
-        _cfg.AutoStart = _autoStart;
-        _cfg.Save();
+        Task.Run(() =>
+        {
+            Safe(() => { AutoStart.Set(on); return true; }, false);
+            _autoStart = Safe(AutoStart.IsEnabled, on);  // перечитать реальное состояние
+            _cfg.AutoStart = _autoStart;
+            _cfg.Save();
+        });
     }
 
     private static T Safe<T>(Func<T> f, T fallback,

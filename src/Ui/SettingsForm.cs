@@ -37,7 +37,6 @@ public sealed class SettingsActions
 public sealed class SettingsForm : Form
 {
     private readonly AppConfig _cfg;
-    private readonly MifsClient _mifs;
     private readonly SettingsActions _act;
 
     private static readonly (PerfMode mode, string key)[] AllModes =
@@ -45,6 +44,15 @@ public sealed class SettingsForm : Form
         (PerfMode.Eco, "mode.eco"), (PerfMode.Quiet, "mode.quiet"), (PerfMode.Auto, "mode.auto"),
         (PerfMode.Turbo, "mode.turbo"), (PerfMode.FullSpeed, "mode.full"),
     ];
+
+    // шрифты общие на всё время жизни (Label шрифтом не владеет, в OnPaint не создаём) — как в QuickPanelForm
+    private static readonly Font HeadFont = new("Segoe UI Semibold", 15f);
+    private static readonly Font NameFont = new("Segoe UI Semibold", 14f);
+    private static readonly Font GroupFont = new("Segoe UI Semibold", 9.5f);
+    private static readonly Font TitleFont = new("Segoe UI", 10f);
+    private static readonly Font DescFont = new("Segoe UI", 8.5f);
+    private static readonly Font NoteFont = new("Segoe UI", 9f);
+    private static readonly Font CtlFont = new("Segoe UI", 9.5f);
 
     // палитра (заполняется в ApplyTheme по системной теме)
     private bool _dark;
@@ -62,10 +70,11 @@ public sealed class SettingsForm : Form
     private float S => DeviceDpi / 96f;
     private int Sc(float v) => (int)Math.Round(v * S);
 
-    public SettingsForm(AppConfig cfg, MifsClient mifs, SettingsActions act)
+    // MifsClient сюда сознательно не передаётся: окно железо не трогает — все «умные»
+    // операции идут через колбэки SettingsActions в TrayApp.
+    public SettingsForm(AppConfig cfg, SettingsActions act)
     {
         _cfg = cfg;
-        _mifs = mifs;
         _act = act;
 
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -84,16 +93,14 @@ public sealed class SettingsForm : Form
         BuildAll();
     }
 
-    /// <summary>Открыть окно (создаётся один раз, дальше — из спрятанного состояния).</summary>
+    /// <summary>
+    /// Открыть окно. Содержимое пересобирается при каждом открытии: настройки могли смениться
+    /// из трея/панели, пока окно было спрятано (авто-герцовка и т.п.), тема — тоже. Пересборка
+    /// дешёвая (несколько десятков контролов), а окно открывают редко.
+    /// </summary>
     public void Popup()
     {
-        if (_panes.Count == 0 || _dark != Theme.IsDark())
-            BuildAll();                 // первая отрисовка или сменилась системная тема — пересобрать
-        else
-        {
-            ApplyTheme();
-            RefreshFromConfig();
-        }
+        BuildAll();
         Show();
         if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
         Activate();
@@ -102,13 +109,23 @@ public sealed class SettingsForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } // прячем, не закрываем
+        if (e.CloseReason == CloseReason.UserClosing)
+        {
+            ActiveControl = null; // форсим Leave у текстовых полей — сохранить недописанный путь
+            e.Cancel = true;
+            Hide(); // прячем, не закрываем
+        }
         base.OnFormClosing(e);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape) { Hide(); e.Handled = true; }
+        if (e.KeyCode == Keys.Escape)
+        {
+            ActiveControl = null; // как и при закрытии крестиком — коммит текстовых полей
+            Hide();
+            e.Handled = true;
+        }
         base.OnKeyDown(e);
     }
 
@@ -143,39 +160,6 @@ public sealed class SettingsForm : Form
         SetDwmDark(dark);
         Text = Loc.T("settings.title");
         BackColor = _winBg;
-        Retheme(this);
-        _nav?.Invalidate();
-    }
-
-    // рекурсивно перекрасить уже построенное дерево под текущую палитру
-    private void Retheme(Control root)
-    {
-        foreach (Control c in root.Controls)
-        {
-            switch (c)
-            {
-                case NavStrip: break;
-                case ToggleSwitch t:
-                    t.BackColor = _card; t.Accent = _accent;
-                    t.OnKnob = _dark ? Color.FromArgb(0, 45, 74) : Color.White;
-                    t.OffLine = _dark ? Color.FromArgb(160, 160, 160) : Color.FromArgb(120, 120, 120);
-                    break;
-                case ComboBox cb: cb.BackColor = _field; cb.ForeColor = _text; break;
-                case TextBox tb: tb.BackColor = _field; tb.ForeColor = _text; break;
-                case Button b:
-                    b.BackColor = _card; b.ForeColor = _text; b.FlatAppearance.BorderColor = _border;
-                    break;
-                case Label l:
-                    l.BackColor = Color.Transparent;
-                    l.ForeColor = (string?)l.Tag == "dim" ? _text2 : _text;
-                    break;
-            }
-            if (c.Tag as string is "host" or "pane")
-                c.BackColor = _winBg;
-            if (c.Controls.Count > 0) Retheme(c);
-        }
-        if (_host is not null) _host.BackColor = _winBg;
-        foreach (var p in _panes) p.BackColor = _winBg;
     }
 
     private void SetDwmDark(bool dark)
@@ -194,7 +178,10 @@ public sealed class SettingsForm : Form
     {
         ApplyTheme();
         SuspendLayout();
+        // Clear не диспозит старые контролы — освобождаем сами (хэндлы, Region'ы), как в BuildMenu
+        var stale = Controls.Cast<Control>().ToArray();
         Controls.Clear();
+        foreach (var c in stale) c.Dispose();
         _panes.Clear();
         _profileRows.Clear();
 
@@ -282,7 +269,6 @@ public sealed class SettingsForm : Form
         return p;
     }
 
-    private TextBox _soundBox = null!;
     private Panel BuildBattery()
     {
         var p = NewPane();
@@ -292,28 +278,27 @@ public sealed class SettingsForm : Form
         AddRow(p, "settings.travel.sound", "settings.travel.sound.desc",
             Toggle(_cfg.TravelSound, on => { _cfg.TravelSound = on; _cfg.Save(); }));
 
-        _soundBox = TextField(_cfg.TravelSoundFile ?? "", Sc(230), s =>
+        var soundBox = TextField(_cfg.TravelSoundFile ?? "", Sc(230), s =>
         {
             _cfg.TravelSoundFile = string.IsNullOrWhiteSpace(s) ? null : s.Trim();
             _cfg.Save();
         });
-        _soundBox.PlaceholderText = "%USERPROFILE%\\Music\\ready.wav";
+        soundBox.PlaceholderText = "%USERPROFILE%\\Music\\ready.wav";
         var browse = LinkButton("settings.browse", () =>
         {
             using var d = new OpenFileDialog { Filter = "WAV|*.wav", CheckFileExists = true };
             if (d.ShowDialog(this) == DialogResult.OK)
             {
-                _soundBox.Text = d.FileName;
+                soundBox.Text = d.FileName;
                 _cfg.TravelSoundFile = d.FileName; _cfg.Save();
             }
         });
         browse.AutoSize = false;
         browse.Size = new Size(Sc(92), Sc(28));
-        AddRow(p, "settings.travel.file", "settings.travel.file.desc", Pair(_soundBox, browse));
+        AddRow(p, "settings.travel.file", "settings.travel.file.desc", Pair(soundBox, browse));
         return p;
     }
 
-    private ComboBox _acHz = null!, _batHz = null!;
     private Panel BuildDisplay()
     {
         var p = NewPane();
@@ -321,14 +306,21 @@ public sealed class SettingsForm : Form
         AddRow(p, "settings.hz.auto", "settings.hz.auto.desc",
             Toggle(_cfg.AutoRefreshRate, _act.SetAutoHz));
         AddGroup(p, "settings.hz.rates");
-        int[] rates = [144, 120, 90, 60, 48];
-        _acHz = Combo([.. rates.Select(r => $"{r} " + Loc.T("settings.hz.unit"))], IdxOf(rates, _cfg.AcRefreshRate),
-            i => _act.SetRefreshRates(rates[i], _cfg.BatteryRefreshRate), Sc(110));
-        _batHz = Combo([.. rates.Select(r => $"{r} " + Loc.T("settings.hz.unit"))], IdxOf(rates, _cfg.BatteryRefreshRate),
-            i => _act.SetRefreshRates(_cfg.AcRefreshRate, rates[i]), Sc(110));
-        AddRow(p, "settings.hz.ac", "settings.hz.ac.desc", _acHz);
-        AddRow(p, "settings.hz.battery", "settings.hz.battery.desc", _batHz);
+        AddRow(p, "settings.hz.ac", "settings.hz.ac.desc",
+            HzCombo(_cfg.AcRefreshRate, hz => _act.SetRefreshRates(hz, _cfg.BatteryRefreshRate)));
+        AddRow(p, "settings.hz.battery", "settings.hz.battery.desc",
+            HzCombo(_cfg.BatteryRefreshRate, hz => _act.SetRefreshRates(_cfg.AcRefreshRate, hz)));
         return p;
+    }
+
+    // Комбо частоты: пресеты + текущее значение из config.json, если оно нестандартное
+    // (вручную вписанные 165 Гц не должны отображаться как «144»)
+    private ComboBox HzCombo(int current, Action<int> apply)
+    {
+        int[] presets = [144, 120, 90, 60, 48];
+        int[] rates = presets.Contains(current) ? presets : [current, .. presets];
+        return Combo([.. rates.Select(r => $"{r} " + Loc.T("settings.hz.unit"))],
+            Array.IndexOf(rates, current), i => apply(rates[i]), Sc(110));
     }
 
     private Panel BuildPerf()
@@ -336,19 +328,23 @@ public sealed class SettingsForm : Form
         var p = NewPane();
         AddHeader(p, "settings.tab.perf", "settings.perf.sub");
         AddGroup(p, "settings.perf.modes");
+        // после смены видимости пересобираем окно (BeginInvoke — после выхода из обработчика):
+        // комбо профилей ниже предлагают только видимые режимы
         AddRow(p, "settings.show.eco", "settings.show.eco.desc",
-            Toggle(_cfg.EcoMode, on => _act.SetModeVisibility(on, _cfg.FullSpeedMode)));
+            Toggle(_cfg.EcoMode, on =>
+            { _act.SetModeVisibility(on, _cfg.FullSpeedMode); BeginInvoke(new Action(BuildAll)); }));
         AddRow(p, "settings.show.full", "settings.show.full.desc",
-            Toggle(_cfg.FullSpeedMode, on => _act.SetModeVisibility(_cfg.EcoMode, on)));
+            Toggle(_cfg.FullSpeedMode, on =>
+            { _act.SetModeVisibility(_cfg.EcoMode, on); BeginInvoke(new Action(BuildAll)); }));
 
         AddGroup(p, "settings.startmode");
         var strat = CurrentStrategy();
         _startCards =
         [
-            RadioCard(p, StartStrategy.None, "settings.start.none", "settings.start.none.desc", strat),
-            RadioCard(p, StartStrategy.Restore, "settings.start.restore", "settings.start.restore.desc", strat),
-            RadioCard(p, StartStrategy.Pin, "settings.start.pin", "settings.start.pin.desc", strat),
-            RadioCard(p, StartStrategy.Profiles, "settings.start.profiles", "settings.start.profiles.desc", strat),
+            RadioCard(p, StartStrategy.None, "settings.start.none", "settings.start.none.desc"),
+            RadioCard(p, StartStrategy.Restore, "settings.start.restore", "settings.start.restore.desc"),
+            RadioCard(p, StartStrategy.Pin, "settings.start.pin", "settings.start.pin.desc"),
+            RadioCard(p, StartStrategy.Profiles, "settings.start.profiles", "settings.start.profiles.desc"),
         ];
 
         // под-опции профилей
@@ -399,7 +395,7 @@ public sealed class SettingsForm : Form
         };
         ico.Region = new Region(Draw.Rounded(new RectangleF(0, 0, Sc(60), Sc(60)), Sc(12)));
         hero.Controls.Add(ico);
-        var name = new Label { Text = "XiControl", Font = new Font("Segoe UI Semibold", 14f), AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Location = new Point(Sc(74), Sc(10)) };
+        var name = new Label { Text = "XiControl", Font = NameFont, AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Location = new Point(Sc(74), Sc(10)) };
         var ver = new Label { Text = $"{Loc.T("settings.version")} {AppVersion()}  ·  GPLv3", Tag = "dim", AutoSize = true, ForeColor = _text2, BackColor = Color.Transparent, Location = new Point(Sc(74), Sc(40)) };
         hero.Controls.Add(name); hero.Controls.Add(ver);
         p.Controls.Add(hero);
@@ -418,20 +414,13 @@ public sealed class SettingsForm : Form
         return p;
     }
 
-    // ---- Синхронизация с конфигом при открытии ----
-
-    private void RefreshFromConfig()
-    {
-        if (_soundBox is not null && !_soundBox.IsDisposed) _soundBox.Text = _cfg.TravelSoundFile ?? "";
-    }
-
     // ---- Строки / контролы ----
 
     private void AddHeader(Panel p, string titleKey, string subKey)
     {
         p.Controls.Add(new Label
         {
-            Text = Loc.T(titleKey), Font = new Font("Segoe UI Semibold", 15f), AutoSize = true,
+            Text = Loc.T(titleKey), Font = HeadFont, AutoSize = true,
             ForeColor = _text, BackColor = Color.Transparent, Margin = new Padding(2, 0, 0, Sc(2)),
         });
         p.Controls.Add(new Label
@@ -443,7 +432,7 @@ public sealed class SettingsForm : Form
 
     private void AddGroup(Panel p, string key) => p.Controls.Add(new Label
     {
-        Text = Loc.T(key), Font = new Font("Segoe UI Semibold", 9.5f), AutoSize = true,
+        Text = Loc.T(key), Font = GroupFont, AutoSize = true,
         ForeColor = _text2, BackColor = Color.Transparent, Margin = new Padding(2, Sc(14), 0, Sc(6)),
     });
 
@@ -454,21 +443,20 @@ public sealed class SettingsForm : Form
     {
         // ширина под текст, чтобы не залезть под контрол; описание меряем и растим карточку по факту
         int textW = Math.Max(Sc(120), RowW - ctl.Width - Sc(48));
-        int descH = 0;
-        if (!string.IsNullOrEmpty(desc))
-            using (var mf = new Font("Segoe UI", 8.5f))
-                descH = TextRenderer.MeasureText(desc, mf, new Size(textW, 0), TextFormatFlags.WordBreak).Height;
+        int descH = string.IsNullOrEmpty(desc)
+            ? 0
+            : TextRenderer.MeasureText(desc, DescFont, new Size(textW, 0), TextFormatFlags.WordBreak).Height;
         int h = string.IsNullOrEmpty(desc) ? Sc(52) : Sc(29) + descH + Sc(14);
 
         var card = new Panel { Width = RowW, Height = h, BackColor = _card, Margin = new Padding(0, 0, 0, Sc(4)), Tag = "cardrow" };
         card.Region = new Region(Draw.Rounded(new RectangleF(0, 0, RowW, h), Sc(6)));
         card.Paint += (_, e) => PaintCardBorder(e.Graphics, RowW, h);
 
-        var t = new Label { Text = title, AutoSize = false, Width = textW, Height = Sc(20), ForeColor = _text, BackColor = Color.Transparent, Font = new Font("Segoe UI", 10f), Location = new Point(Sc(16), Sc(9)), AutoEllipsis = true };
+        var t = new Label { Text = title, AutoSize = false, Width = textW, Height = Sc(20), ForeColor = _text, BackColor = Color.Transparent, Font = TitleFont, Location = new Point(Sc(16), Sc(9)), AutoEllipsis = true };
         card.Controls.Add(t);
         if (!string.IsNullOrEmpty(desc))
         {
-            var d = new Label { Text = desc, Tag = "dim", AutoSize = false, Width = textW, Height = descH + Sc(2), ForeColor = _text2, BackColor = Color.Transparent, Font = new Font("Segoe UI", 8.5f), Location = new Point(Sc(16), Sc(29)) };
+            var d = new Label { Text = desc, Tag = "dim", AutoSize = false, Width = textW, Height = descH + Sc(2), ForeColor = _text2, BackColor = Color.Transparent, Font = DescFont, Location = new Point(Sc(16), Sc(29)) };
             card.Controls.Add(d);
         }
         card.Controls.Add(ctl);
@@ -483,9 +471,7 @@ public sealed class SettingsForm : Form
     {
         string text = Loc.T(key);
         int textW = RowW - Sc(28);
-        int textH;
-        using (var mf = new Font("Segoe UI", 9f))
-            textH = TextRenderer.MeasureText(text, mf, new Size(textW, 0), TextFormatFlags.WordBreak).Height;
+        int textH = TextRenderer.MeasureText(text, NoteFont, new Size(textW, 0), TextFormatFlags.WordBreak).Height;
 
         var note = new Panel { Width = RowW, Height = textH + Sc(26), BackColor = _winBg, Margin = new Padding(0, Sc(2), 0, Sc(4)) };
         note.Paint += (_, e) =>
@@ -495,8 +481,7 @@ public sealed class SettingsForm : Form
             using (var path = Draw.Rounded(new RectangleF(0.5f, 0.5f, RowW - 1.5f, note.Height - 1.5f), Sc(6)))
             using (var fill = new SolidBrush(_sel))
                 g.FillPath(fill, path);
-            using var font = new Font("Segoe UI", 9f);
-            TextRenderer.DrawText(g, text, font, new Rectangle(Sc(14), Sc(13), textW, note.Height - Sc(26)),
+            TextRenderer.DrawText(g, text, NoteFont, new Rectangle(Sc(14), Sc(13), textW, note.Height - Sc(26)),
                 _text2, TextFormatFlags.WordBreak | TextFormatFlags.Left | TextFormatFlags.Top);
         };
         p.Controls.Add(note);
@@ -514,18 +499,18 @@ public sealed class SettingsForm : Form
     private Panel SubRow(string titleKey, Control ctl)
     {
         var row = new Panel { Width = RowW, Height = Sc(42), BackColor = _winBg, Margin = new Padding(Sc(30), 0, 0, 0) };
-        row.Controls.Add(new Label { Text = Loc.T(titleKey), AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Font = new Font("Segoe UI", 9.5f), Location = new Point(Sc(2), Sc(11)) });
+        row.Controls.Add(new Label { Text = Loc.T(titleKey), AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Font = CtlFont, Location = new Point(Sc(2), Sc(11)) });
         ctl.Location = new Point(RowW - ctl.Width - Sc(16) - Sc(30), (Sc(42) - ctl.Height) / 2);
         ctl.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         row.Controls.Add(ctl);
         return row;
     }
 
-    private Panel RadioCard(Panel p, StartStrategy s, string titleKey, string descKey, StartStrategy current)
+    // Радио-карточка стратегии старта: выбранность читается из конфига при отрисовке (CurrentStrategy)
+    private Panel RadioCard(Panel p, StartStrategy s, string titleKey, string descKey)
     {
         var card = new Panel { Width = RowW, Height = Sc(56), BackColor = _card, Margin = new Padding(0, 0, 0, Sc(4)), Cursor = Cursors.Hand, Tag = s };
         card.Region = new Region(Draw.Rounded(new RectangleF(0, 0, RowW, Sc(56)), Sc(6)));
-        bool sel = s == current;
         card.Paint += (_, e) =>
         {
             PaintCardBorder(e.Graphics, RowW, Sc(56));
@@ -536,8 +521,8 @@ public sealed class SettingsForm : Form
             g.DrawEllipse(pen, x, y, d, d);
             if (on) { using var b = new SolidBrush(_accent); g.FillEllipse(b, x + d * 0.28f, y + d * 0.28f, d * 0.44f, d * 0.44f); }
         };
-        var t = new Label { Text = Loc.T(titleKey), AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Font = new Font("Segoe UI", 10f), Location = new Point(Sc(48), Sc(8)) };
-        var dsc = new Label { Text = Loc.T(descKey), Tag = "dim", AutoSize = true, MaximumSize = new Size(RowW - Sc(70), 0), ForeColor = _text2, BackColor = Color.Transparent, Font = new Font("Segoe UI", 8.5f), Location = new Point(Sc(48), Sc(28)) };
+        var t = new Label { Text = Loc.T(titleKey), AutoSize = true, ForeColor = _text, BackColor = Color.Transparent, Font = TitleFont, Location = new Point(Sc(48), Sc(8)) };
+        var dsc = new Label { Text = Loc.T(descKey), Tag = "dim", AutoSize = true, MaximumSize = new Size(RowW - Sc(70), 0), ForeColor = _text2, BackColor = Color.Transparent, Font = DescFont, Location = new Point(Sc(48), Sc(28)) };
         void Pick(object? _, EventArgs __) { _act.SetStartStrategy(s); UpdateStartUi(); }
         card.Click += Pick; t.Click += Pick; dsc.Click += Pick;
         t.Cursor = dsc.Cursor = Cursors.Hand;
@@ -561,14 +546,18 @@ public sealed class SettingsForm : Form
         return StartStrategy.None;
     }
 
+    // Только видимые режимы (скрытый Full-speed из приложения включить нельзя — контракт
+    // AppConfig.FullSpeedMode); плюс текущий выбор, даже если его успели скрыть.
     private ComboBox ProfileCombo(bool ac)
     {
-        var items = new List<string> { Loc.T("settings.profile.nochange") };
-        items.AddRange(AllModes.Select(m => Loc.T(m.key)));
         var cur = ac ? _cfg.AcPerfMode : _cfg.BatteryPerfMode;
-        int idx = cur is PerfMode pm ? Array.FindIndex(AllModes, m => m.mode == pm) + 1 : 0;
+        var modes = AllModes.Where(m => m.mode == cur
+            || (m.mode != PerfMode.Eco || _cfg.EcoMode) && (m.mode != PerfMode.FullSpeed || _cfg.FullSpeedMode)).ToArray();
+        var items = new List<string> { Loc.T("settings.profile.nochange") };
+        items.AddRange(modes.Select(m => Loc.T(m.key)));
+        int idx = cur is PerfMode pm ? Array.FindIndex(modes, m => m.mode == pm) + 1 : 0;
         return Combo([.. items], idx, i =>
-            _act.SetProfileMode(ac, i == 0 ? null : AllModes[i - 1].mode), Sc(140));
+            _act.SetProfileMode(ac, i == 0 ? null : modes[i - 1].mode), Sc(140));
     }
 
     private ToggleSwitch Toggle(bool on, Action<bool> changed)
@@ -589,7 +578,7 @@ public sealed class SettingsForm : Form
         {
             DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat,
             DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = Sc(22),
-            Width = width, BackColor = _field, ForeColor = _text, Font = new Font("Segoe UI", 9.5f),
+            Width = width, BackColor = _field, ForeColor = _text, Font = CtlFont,
         };
         cb.Items.AddRange(items);
         // тёмная тема: нативный combo игнорирует BackColor — рисуем сами (и закрытый бокс, и список)
@@ -615,7 +604,7 @@ public sealed class SettingsForm : Form
         var tb = new TextBox
         {
             Text = val, Width = width, BorderStyle = BorderStyle.FixedSingle,
-            BackColor = _field, ForeColor = _text, Font = new Font("Segoe UI", 9.5f),
+            BackColor = _field, ForeColor = _text, Font = CtlFont,
         };
         tb.Leave += (_, _) => changed(tb.Text);
         return tb;
@@ -636,7 +625,7 @@ public sealed class SettingsForm : Form
         {
             Text = keyOrText.StartsWith("settings.") || keyOrText.StartsWith("app.") ? Loc.T(keyOrText) : keyOrText,
             AutoSize = false, Height = Sc(30), Width = Sc(0), Padding = new Padding(Sc(6), 0, Sc(6), 0),
-            FlatStyle = FlatStyle.Flat, BackColor = _card, ForeColor = _text, Font = new Font("Segoe UI", 9.5f),
+            FlatStyle = FlatStyle.Flat, BackColor = _card, ForeColor = _text, Font = CtlFont,
             Margin = new Padding(0, 0, Sc(8), 0), Cursor = Cursors.Hand,
         };
         b.FlatAppearance.BorderColor = _border;
@@ -653,8 +642,6 @@ public sealed class SettingsForm : Form
         using var pen = new Pen(_border);
         g.DrawPath(pen, path);
     }
-
-    private static int IdxOf(int[] arr, int v) { int i = Array.IndexOf(arr, v); return i < 0 ? 0 : i; }
 
     private static string AppVersion()
     {
@@ -731,7 +718,6 @@ public sealed class SettingsForm : Form
             g.Clear(_o._navBg);
             int pad = _o.Sc(8);
 
-            using var font = new Font("Segoe UI", 10f);
             for (int i = 0; i < Tabs.Length; i++)
             {
                 int y = RowY(i);
@@ -751,7 +737,7 @@ public sealed class SettingsForm : Form
                 }
                 var gc = sel ? _o._accent : _o._text2;
                 DrawGlyph(g, Tabs[i].glyph, new RectangleF(rect.X + _o.Sc(12), rect.Y + (ItemH - _o.Sc(18)) / 2f, _o.Sc(18), _o.Sc(18)), gc);
-                TextRenderer.DrawText(g, Loc.T(Tabs[i].key), font,
+                TextRenderer.DrawText(g, Loc.T(Tabs[i].key), TitleFont,
                     new Rectangle(rect.X + _o.Sc(40), rect.Y, rect.Width - _o.Sc(40), ItemH),
                     _o._text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
@@ -795,7 +781,8 @@ public sealed class SettingsForm : Form
                 case NavGlyph.About:
                     g.DrawEllipse(pen, x + w * 0.15f, y + h * 0.15f, w * 0.7f, h * 0.7f);
                     g.DrawLine(pen, x + w / 2f, y + h * 0.45f, x + w / 2f, y + h * 0.68f);
-                    g.FillEllipse(new SolidBrush(c), x + w / 2f - _o.Sc(1), y + h * 0.3f, _o.Sc(2.2f), _o.Sc(2.2f));
+                    using (var dot = new SolidBrush(c))
+                        g.FillEllipse(dot, x + w / 2f - _o.Sc(1), y + h * 0.3f, _o.Sc(2.2f), _o.Sc(2.2f));
                     break;
             }
         }

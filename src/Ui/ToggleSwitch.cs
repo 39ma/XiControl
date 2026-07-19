@@ -37,6 +37,8 @@ public sealed class ToggleSwitch : Control
     protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnClick(EventArgs e) { Checked = !Checked; base.OnClick(e); }
+    protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+    protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
     protected override bool IsInputKey(Keys keyData) => keyData is Keys.Space || base.IsInputKey(keyData);
     protected override void OnKeyDown(KeyEventArgs e)
@@ -78,6 +80,9 @@ public sealed class ToggleSwitch : Control
         float cx = _checked ? track.Right - rad : track.X + rad;
         using var kb = new SolidBrush(_checked ? OnKnob : OffLine);
         g.FillEllipse(kb, cx - knob / 2f, cy - knob / 2f, knob, knob);
+
+        // фокус с клавиатуры (Tab) должен быть виден
+        if (Focused) ControlPaint.DrawFocusRectangle(g, ClientRectangle);
     }
 
     private static Color Blend(Color a, Color b, float t) => Color.FromArgb(

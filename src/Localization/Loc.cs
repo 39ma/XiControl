@@ -111,6 +111,7 @@ public static class Loc
 
         ["settings.about.sub"]    = ["Driver-free трей-утилита для ноутбуков Xiaomi / Redmi.", "Driver-free tray utility for Xiaomi / Redmi laptops.", "适用于 Xiaomi / Redmi 笔记本的免驱托盘工具。"],
         ["settings.version"]      = ["Версия", "Version", "版本"],
+        ["settings.about.forum"]  = ["Форум 4PDA", "4PDA forum", "4PDA 论坛"],
         ["settings.about.license"]= ["Лицензия", "License", "许可证"],
         ["settings.about.updates"]= ["Проверить обновления", "Check for updates", "检查更新"],
         ["settings.about.model"]  = ["Модель", "Model", "型号"],

@@ -466,6 +466,7 @@ public sealed class SettingsForm : Form
 
         var links = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Width = RowW, Margin = new Padding(0, 0, 0, Sc(14)), BackColor = _winBg };
         links.Controls.Add(LinkButton("GitHub", () => Open("https://github.com/Oksion/XiControl")));
+        links.Controls.Add(LinkButton("settings.about.forum", () => Open("https://4pda.to/forum/index.php?showtopic=1122287")));
         links.Controls.Add(LinkButton("settings.about.license", () => Open("https://github.com/Oksion/XiControl/blob/main/LICENSE")));
         links.Controls.Add(LinkButton("settings.about.updates", () => Open("https://github.com/Oksion/XiControl/releases")));
         p.Controls.Add(links);

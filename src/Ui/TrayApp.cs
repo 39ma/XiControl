@@ -13,6 +13,7 @@ public sealed class TrayApp : IDisposable
     private readonly ContextMenuStrip _menu;
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
+    private TouchpadControl _touchpad = null!; // создаётся в конструкторе до панели
     private bool _dark = Theme.IsDark();
     private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
@@ -140,7 +141,8 @@ public sealed class TrayApp : IDisposable
         SystemEvents.PowerModeChanged += OnPower;
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
-        _panel = new QuickPanelForm(_mifs, _cfg);
+        _touchpad = new TouchpadControl(_cfg);
+        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad);
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
         _panel.TravelChanged = OnPanelTravelChanged;
@@ -236,6 +238,7 @@ public sealed class TrayApp : IDisposable
             case "owl": if (_cfg.OwlMode) ToggleAwake(); break; // фича скрыта — клавиша не включает
             case "monitor": ToggleMonitor(); break;
             case "travel": SetTravel(!_cfg.TravelMode); break;  // без ChargeCare внутри не включится
+            case "touchpad": if (_cfg.TouchpadFeature) ToggleTouchpadAction(); break; // фича скрыта — не трогаем
             case "projection": KeyActions.Projection(); break;
             case "settings": KeyActions.OpenSettings(); break;
             case "copilot": KeyActions.Copilot(); break;
@@ -244,6 +247,20 @@ public sealed class TrayApp : IDisposable
                 break;
         }
     }
+
+    // Действие «тачпад вкл/выкл»: CM-вызовы небыстрые (отключение узла — сотни мс) — в фоне;
+    // затем OSD (или обновление панели, если она открыта — там своя ячейка).
+    private void ToggleTouchpadAction() => Task.Run(() =>
+    {
+        bool? on = Safe<bool?>(() => _touchpad.Toggle(), null);
+        if (on is not bool b) return;
+        _osd.BeginInvoke(new Action(() =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else _osd.Flash(b ? OsdKind.TouchpadOn : OsdKind.TouchpadOff,
+                            Loc.T(b ? "osd.touchpad.on" : "osd.touchpad.off"));
+        }));
+    });
 
     // Клавиша «Настройки»: настраиваемое действие; при открытой панели — всегда заряд
     // (переключается пилюля в ней), независимо от ремапа.

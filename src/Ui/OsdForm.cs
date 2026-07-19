@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace XiControl.Ui;
 
-public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff }
+public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff, TouchpadOn, TouchpadOff }
 
 /// <summary>
 /// OSD-оверлей: тёмная скруглённая карточка по центру с иконкой и текстом,
@@ -195,6 +195,8 @@ public sealed class OsdForm : Form
             OsdKind.RefreshRateOff  => SvgIcons.RefreshRateOff,
             OsdKind.Travel          => SvgIcons.Travel,
             OsdKind.TravelOff       => SvgIcons.TravelOff,
+            OsdKind.TouchpadOn      => SvgIcons.Touchpad,
+            OsdKind.TouchpadOff     => SvgIcons.TouchpadOff,
             _ => SvgIcons.Settings,
         };
         SvgIcons.Draw(g, name, r);

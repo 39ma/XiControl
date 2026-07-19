@@ -34,14 +34,16 @@ public sealed class QuickPanelForm : Form
 
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
+    private readonly TouchpadControl _tp;
 
     // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
     private (PerfMode mode, string key, Color accent)[] _modes = [];
     private Rectangle[] _modeRects = [];
-    private Rectangle _care80, _care100, _travelCell, _hzCell, _awake, _close, _monBtn;
+    private Rectangle _care80, _care100, _travelCell, _tpCell, _hzCell, _awake, _close, _monBtn;
 
     private PerfMode? _mode;
-    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу
+    private bool _tpAvail, _tpOn; // тачпад: найден в системе / включён
+    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу, 17=тачпад
 
     // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
     // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
@@ -66,10 +68,11 @@ public sealed class QuickPanelForm : Form
     /// <summary>Панель переключила режим «В дорогу» — трей запускает/останавливает наблюдение за 100%.</summary>
     public Action? TravelChanged;
 
-    public QuickPanelForm(MifsClient mifs, AppConfig cfg)
+    public QuickPanelForm(MifsClient mifs, AppConfig cfg, TouchpadControl touchpad)
     {
         _mifs = mifs;
         _cfg = cfg;
+        _tp = touchpad;
         ReloadModes();
         _anim.Tick += (_, _) =>
         {
@@ -117,6 +120,8 @@ public sealed class QuickPanelForm : Form
     private void RefreshState()
     {
         try { _mode = _mifs.GetPerfMode(); } catch { _mode = null; }
+        try { _tpAvail = _cfg.TouchpadFeature && _tp.Available; _tpOn = _tp.IsEnabled() ?? false; }
+        catch { _tpAvail = false; }
     }
 
     /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
@@ -142,7 +147,10 @@ public sealed class QuickPanelForm : Form
     {
         int n = _modes.Length;
         int p = Sc(16), header = Sc(28), cellW = Sc(84), cellH = Sc(94), gap = Sc(8);
-        int content = cellW * n + gap * (n - 1);
+        // ширина панели не зависит от числа видимых режимов: при скрытых Эко/Полной
+        // растягиваются сами ячейки (иконки остаются прежними, растут только границы),
+        // иначе сжимался нижний ряд и пилюли 80/100 становились мелкими
+        int content = cellW * Modes.Length + gap * (Modes.Length - 1);
         int width = content + p * 2;
 
         int modeY = p + header + Sc(4);
@@ -151,19 +159,27 @@ public sealed class QuickPanelForm : Form
         int pillsH = Sc(42);
         int height = pillsY + pillsH + p;
 
+        int cellWn = (content - gap * (n - 1)) / n;
         for (int i = 0; i < n; i++)
-            _modeRects[i] = new Rectangle(p + i * (cellW + gap), modeY, cellW, cellH);
+        {
+            int x = p + i * (cellWn + gap);
+            int w = i == n - 1 ? p + content - x : cellWn; // последняя добирает остаток округления
+            _modeRects[i] = new Rectangle(x, modeY, w, cellH);
+        }
 
-        // ряд заряда: [В дорогу] [80%] [100%] … [авто-герцовка] [Не спать]
+        // ряд заряда: [В дорогу] [80%] [100%] … [тачпад] [авто-герцовка] [Не спать]
         int owlW = _cfg.OwlMode ? Sc(56) : 0;
         int hzW = Sc(56);
+        int tpW = _tpAvail ? Sc(56) : 0;
         int travelW = Sc(46);
-        int pillsW = content - travelW - gap - hzW - gap - (_cfg.OwlMode ? owlW + gap : 0);
+        int pillsW = content - travelW - gap - hzW - gap
+            - (tpW > 0 ? tpW + gap : 0) - (_cfg.OwlMode ? owlW + gap : 0);
         int half = (pillsW - gap) / 2;
         _travelCell = new Rectangle(p, pillsY, travelW, pillsH);
         _care80 = new Rectangle(_travelCell.Right + gap, pillsY, half, pillsH);
         _care100 = new Rectangle(_care80.Right + gap, pillsY, half, pillsH);
-        _hzCell = new Rectangle(_care100.Right + gap, pillsY, hzW, pillsH);
+        _tpCell = tpW > 0 ? new Rectangle(_care100.Right + gap, pillsY, tpW, pillsH) : Rectangle.Empty;
+        _hzCell = new Rectangle((tpW > 0 ? _tpCell.Right : _care100.Right) + gap, pillsY, hzW, pillsH);
         _awake = _cfg.OwlMode ? new Rectangle(_hzCell.Right + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
         _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
@@ -334,6 +350,19 @@ public sealed class QuickPanelForm : Form
             RefreshRate.ApplyForPower(_cfg);
             Invalidate();
         }
+        else if (h == 17 && !_tpCell.IsEmpty)
+        {
+            // тачпад: CM-вызов небыстрый (отключение узла ~сотни мс) — в фоне;
+            // состояние переключаем оптимистично, колбэк уточнит фактическое
+            _tpOn = !_tpOn;
+            Invalidate();
+            Task.Run(() =>
+            {
+                var on = _tp.Toggle();
+                if (on is bool b && IsHandleCreated)
+                    BeginInvoke(() => { _tpOn = b; Invalidate(); });
+            });
+        }
     }
 
     private int HitTest(Point pt)
@@ -344,6 +373,7 @@ public sealed class QuickPanelForm : Form
         if (_travelCell.Contains(pt)) return 16;
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
+        if (!_tpCell.IsEmpty && _tpCell.Contains(pt)) return 17;
         if (_hzCell.Contains(pt)) return 15;
         if (!_awake.IsEmpty && _awake.Contains(pt)) return 13;
         return -1;
@@ -414,6 +444,17 @@ public sealed class QuickPanelForm : Form
 
         DrawPill(g, _care80, "80%", _cfg.ChargeCare, _hover == 10, Green, PillFont);
         DrawPill(g, _care100, "100%", !_cfg.ChargeCare, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
+
+        // тачпад: подсвечиваем ячейку, когда он ВЫКЛЮЧЕН — нестандартное состояние заметнее
+        if (!_tpCell.IsEmpty)
+        {
+            DrawCell(g, _tpCell, !_tpOn, _hover == 17, Color.FromArgb(255, 82, 82), Sc(10));
+            float tpIcon = Math.Min(_tpCell.Width, _tpCell.Height) - Sc(8);
+            SvgIcons.Draw(g,
+                _tpOn ? SvgIcons.Touchpad : SvgIcons.TouchpadOff,
+                new RectangleF(_tpCell.X + (_tpCell.Width - tpIcon) / 2f, _tpCell.Y + (_tpCell.Height - tpIcon) / 2f, tpIcon, tpIcon),
+                !_tpOn || _hover == 17 ? 1f : 0.6f);
+        }
 
         // авто-герцовка: монитор с круговыми стрелками, активна при включённой опции
         DrawCell(g, _hzCell, _cfg.AutoRefreshRate, _hover == 15, Blue, Sc(10));

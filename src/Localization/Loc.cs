@@ -101,6 +101,7 @@ public static class Loc
         ["settings.act.owl"]      = ["Режим совы", "Owl mode", "猫头鹰模式"],
         ["settings.act.monitor"]  = ["Монитор", "Monitor", "监视器"],
         ["settings.act.travel"]   = ["Режим «В дорогу»", "Travel mode", "出行模式"],
+        ["settings.act.touchpad"] = ["Тачпад вкл/выкл", "Touchpad on/off", "触控板开关"],
         ["settings.act.projection"]= ["Проекция (Win+P)", "Projection (Win+P)", "投影（Win+P）"],
         ["settings.act.settings"] = ["Параметры Windows", "Windows Settings", "Windows 设置"],
         ["settings.act.copilot"]  = ["Copilot (Win+C)", "Copilot (Win+C)", "Copilot（Win+C）"],
@@ -109,6 +110,8 @@ public static class Loc
         ["settings.keys.features"]= ["Функции", "Features", "功能"],
         ["settings.owl.feature"]  = ["«Режим совы» как функция", "Owl mode feature", "猫头鹰模式功能"],
         ["settings.owl.feature.desc"]= ["Показывать сову в панели и пункт меню (не гасить экран / не спать).", "Show the owl in the panel and menu (keep screen on / no sleep).", "在面板和菜单中显示猫头鹰（保持屏幕常亮/不休眠）。"],
+        ["settings.touchpad.feature"] = ["Управление тачпадом", "Touchpad control", "触控板控制"],
+        ["settings.touchpad.feature.desc"]= ["Ячейка в панели и действие для клавиш. Отключённый тачпад всегда включается сам после перезагрузки.", "Panel cell and key action. A disabled touchpad always re-enables itself after a reboot.", "面板单元格与按键动作。禁用的触控板重启后总会自动恢复。"],
 
         ["settings.about.sub"]    = ["Driver-free трей-утилита для ноутбуков Xiaomi / Redmi.", "Driver-free tray utility for Xiaomi / Redmi laptops.", "适用于 Xiaomi / Redmi 笔记本的免驱托盘工具。"],
         ["settings.version"]      = ["Версия", "Version", "版本"],
@@ -130,6 +133,9 @@ public static class Loc
         ["osd.travel.sub"]   = ["Заряжаем до 100%", "Charging to 100%", "充电至 100%"],
         ["osd.travel.off"]   = ["Режим «В дорогу» выключен", "Travel mode off", "出行模式已关闭"],
         ["osd.travel.ready"] = ["Батарея заряжена — можно в дорогу!", "Battery full — ready to go!", "电池已充满，可以出发！"],
+
+        ["osd.touchpad.on"]  = ["Тачпад включён", "Touchpad on", "触控板已开启"],
+        ["osd.touchpad.off"] = ["Тачпад выключен", "Touchpad off", "触控板已关闭"],
 
         ["menu.monitor"]    = ["Монитор", "Monitor", "监视器"],
         ["monitor.title"]   = ["Монитор", "Monitor", "监视器"],

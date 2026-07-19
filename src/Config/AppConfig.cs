@@ -155,6 +155,17 @@ public sealed class AppConfig
     public string? AiKeyCommand { get; set; }
     public string? ProjKeyCommand { get; set; }
 
+    /// <summary>
+    /// «Управление тачпадом» как фича: ячейка в панели и действие для клавиш.
+    /// false — ячейка скрыта, действие «touchpad» не срабатывает (как OwlMode у совы).
+    /// </summary>
+    public bool TouchpadFeature { get; set; } = true;
+
+    /// <summary>ID узла тачпада — запоминается автоматически при первом обнаружении.
+    /// Нужен, чтобы включить тачпад обратно после перезапуска приложения: у выключенного
+    /// тачпада HID-коллекции исчезают из системы и найти его иначе нечем. Не редактировать.</summary>
+    public string? TouchpadDeviceId { get; set; }
+
     // ---- Устаревшие поля клавиш (до v0.8) — читаются только для миграции ----
 
     /// <summary>Устаревшее: см. SettingsKeyAction. "charge"/"settings".</summary>

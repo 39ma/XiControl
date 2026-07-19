@@ -296,6 +296,8 @@ public sealed class SettingsForm : Form
             Toggle(_cfg.RememberBrightness, _act.SetRememberBrightness));
         AddRow(p, "settings.owl.feature", "settings.owl.feature.desc",
             Toggle(_cfg.OwlMode, _act.SetOwlFeature));
+        AddRow(p, "settings.touchpad.feature", "settings.touchpad.feature.desc",
+            Toggle(_cfg.TouchpadFeature, on => { _cfg.TouchpadFeature = on; _cfg.Save(); }));
         return p;
     }
 
@@ -391,7 +393,7 @@ public sealed class SettingsForm : Form
     // Общий список действий для всех клавиш; порядок = порядок в комбо
     private static readonly string[] KeyActionValues =
     [
-        "modes", "charge", "panel", "owl", "monitor", "travel",
+        "modes", "charge", "panel", "owl", "monitor", "travel", "touchpad",
         "projection", "settings", "copilot", "launch", "none",
     ];
 

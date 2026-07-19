@@ -213,37 +213,49 @@ public sealed class TrayApp : IDisposable
         {
             case Mifs.KeyMiDown: OnMiDown(); break;
             case Mifs.KeyMiUp: OnMiUp(); break;
-            case Mifs.KeyProjection when value == 0: KeyActions.Projection(); break; // value 2 = слабый зарядник — пока пропуск
+            case Mifs.KeyProjection when value == 0:                                 // value 2 = слабый зарядник — пока пропуск
+                RunKeyAction(_cfg.ProjKeyAction, _cfg.ProjKeyCommand); break;
             case Mifs.KeySettings: OnSettingsKey(); break; // одиночное событие, удержание не ловится
-            case Mifs.KeyAiDown: OnAiKey(); break;                                   // 0x24 (отпускание) игнорируем
+            case Mifs.KeyAiDown:                                                     // 0x24 (отпускание) игнорируем
+                RunKeyAction(_cfg.AiKeyAction, _cfg.AiKeyCommand); break;
             case Mifs.KeyMic: OnMicKey(value); break;
             case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
             case Mifs.KeyFnLock: OnFnLockKey(value); break;
         }
     }
 
-    // Клавиша «Настройки»: по умолчанию заряд 80↔100; "SettingsKey": "settings" → Параметры Windows.
-    // При открытой панели — всегда заряд (переключается пилюля в ней), независимо от ремапа.
+    // Выполнить настраиваемое действие клавиши (AppConfig.*Action / *Command).
+    // Неизвестное значение и "none" — молча ничего (совместимость с будущими конфигами).
+    private void RunKeyAction(string? action, string? command)
+    {
+        switch (action)
+        {
+            case "modes": CycleMode(); break;
+            case "charge": ToggleCharge(); break;
+            case "panel": _panel.Toggle(); break;
+            case "owl": if (_cfg.OwlMode) ToggleAwake(); break; // фича скрыта — клавиша не включает
+            case "monitor": ToggleMonitor(); break;
+            case "travel": SetTravel(!_cfg.TravelMode); break;  // без ChargeCare внутри не включится
+            case "projection": KeyActions.Projection(); break;
+            case "settings": KeyActions.OpenSettings(); break;
+            case "copilot": KeyActions.Copilot(); break;
+            case "launch":
+                if (!string.IsNullOrWhiteSpace(command)) KeyActions.LaunchCommand(command);
+                break;
+        }
+    }
+
+    // Клавиша «Настройки»: настраиваемое действие; при открытой панели — всегда заряд
+    // (переключается пилюля в ней), независимо от ремапа.
     private void OnSettingsKey()
     {
-        if (!_panel.Visible && string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase))
-            KeyActions.OpenSettings();
-        else
-            ToggleCharge();
+        if (_panel.Visible) ToggleCharge();
+        else RunKeyAction(_cfg.SettingsKeyAction, _cfg.SettingsKeyCommand);
     }
 
     // Переключить лимит заряда на противоположный (OSD/панель — внутри ToggleCare)
     private void ToggleCharge()
         => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
-
-    // AI-клавиша: своя программа из config.json (AiKeyProgram/AiKeyArgs), иначе Copilot
-    private void OnAiKey()
-    {
-        if (!string.IsNullOrWhiteSpace(_cfg.AiKeyProgram))
-            KeyActions.Launch(_cfg.AiKeyProgram, _cfg.AiKeyArgs);
-        else
-            KeyActions.Copilot();
-    }
 
     private void OnMicKey(byte value)
     {
@@ -288,9 +300,9 @@ public sealed class TrayApp : IDisposable
     }
 
     // Жесты Mi: одинарный клик (после окна двойного) / двойной клик / удержание.
-    // По умолчанию: одинарный — цикл режимов, двойной — заряд 80/100;
-    // "MiShortPress": "charge" инвертирует одинарный и двойной.
-    private bool MiChargeFirst => string.Equals(_cfg.MiShortPress, "charge", StringComparison.OrdinalIgnoreCase);
+    // Действия обоих кликов настраиваются (MiClickAction/MiDoubleAction);
+    // двойной = "none" — жест отключён, одинарный срабатывает мгновенно.
+    private bool MiDoubleEnabled => !string.Equals(_cfg.MiDoubleAction, "none", StringComparison.OrdinalIgnoreCase);
 
     private void OnMiUp()
     {
@@ -298,9 +310,9 @@ public sealed class TrayApp : IDisposable
         if (_miHandled) { _miClicks = 0; return; }
 
         // двойной клик отключён — одинарный без задержки
-        if (!_cfg.MiDoubleClick)
+        if (!MiDoubleEnabled)
         {
-            if (MiChargeFirst) ToggleCharge(); else CycleMode();
+            RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand);
             return;
         }
 
@@ -309,7 +321,7 @@ public sealed class TrayApp : IDisposable
         if (_miClicks >= 2)
         {
             _miClicks = 0;
-            if (MiChargeFirst) CycleMode(); else ToggleCharge(); // двойной клик
+            RunKeyAction(_cfg.MiDoubleAction, _cfg.MiDoubleCommand); // двойной клик
         }
         else
         {
@@ -321,9 +333,7 @@ public sealed class TrayApp : IDisposable
     {
         _miClick.Stop();
         if (_miClicks == 1)
-        {
-            if (MiChargeFirst) ToggleCharge(); else CycleMode(); // одинарный клик
-        }
+            RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand); // одинарный клик
         _miClicks = 0;
     }
 
@@ -783,6 +793,13 @@ public sealed class TrayApp : IDisposable
     {
         _monitor ??= new MonitorForm(_cfg);
         _monitor.Popup();
+    }
+
+    // Для действия клавиши "monitor": повторное нажатие прячет виджет
+    private void ToggleMonitor()
+    {
+        if (_monitor?.Visible == true) _monitor.Hide();
+        else ShowMonitor();
     }
 
     // «Режим совы»: включить/выключить «не спать» (панель обновится, если открыта)

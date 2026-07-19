@@ -125,32 +125,51 @@ public sealed class AppConfig
     /// </summary>
     public string? MonitorView { get; set; }
 
-    /// <summary>
-    /// Действие клавиши «настройки»: "charge" (по умолчанию) — переключение заряда
-    /// 80/100, "settings" — открыть Параметры Windows (как в ранних версиях).
-    /// </summary>
+    // ---- Действия клавиш ----
+    // На каждый слот — своё действие из общего списка: "modes" (цикл режимов), "charge"
+    // (заряд 80/100), "panel" (быстрая панель), "owl", "monitor", "travel", "projection"
+    // (Win+P), "settings" (Параметры Windows), "copilot" (Win+C), "launch" (команда из
+    // соответствующего *Command), "none". null → дефолт слота (см. MigrateKeyActions).
+
+    /// <summary>Одиночный клик Mi-кнопки (дефолт "modes"). Удержание всегда открывает панель.</summary>
+    public string? MiClickAction { get; set; }
+
+    /// <summary>Двойной клик Mi-кнопки (дефолт "charge"). "none" — жест отключён,
+    /// одиночный клик срабатывает мгновенно (без окна ожидания ~300 мс).</summary>
+    public string? MiDoubleAction { get; set; }
+
+    /// <summary>Клавиша «настройки» (шестерёнка), дефолт "charge". При открытой панели — всегда заряд.</summary>
+    public string? SettingsKeyAction { get; set; }
+
+    /// <summary>AI-клавиша (дефолт "copilot").</summary>
+    public string? AiKeyAction { get; set; }
+
+    /// <summary>Клавиша «проекция» (дефолт "projection").</summary>
+    public string? ProjKeyAction { get; set; }
+
+    /// <summary>Команды для действия "launch": путь к exe/файлу/URL + аргументы
+    /// (поддерживаются %ПЕРЕМЕННЫЕ%; путь с пробелами — в кавычках).</summary>
+    public string? MiClickCommand { get; set; }
+    public string? MiDoubleCommand { get; set; }
+    public string? SettingsKeyCommand { get; set; }
+    public string? AiKeyCommand { get; set; }
+    public string? ProjKeyCommand { get; set; }
+
+    // ---- Устаревшие поля клавиш (до v0.8) — читаются только для миграции ----
+
+    /// <summary>Устаревшее: см. SettingsKeyAction. "charge"/"settings".</summary>
     public string? SettingsKey { get; set; }
 
-    /// <summary>
-    /// Раскладка кликов Mi-кнопки. "modes" (по умолчанию): одинарный — цикл режимов,
-    /// двойной — заряд 80/100. "charge" — инверсия: одинарный — заряд, двойной — режимы.
-    /// Удержание всегда открывает панель.
-    /// </summary>
+    /// <summary>Устаревшее: см. MiClickAction/MiDoubleAction. "modes"/"charge".</summary>
     public string? MiShortPress { get; set; }
 
-    /// <summary>
-    /// Двойной клик Mi-кнопки. false — жест отключён, одинарный клик срабатывает
-    /// мгновенно (без окна ожидания ~300 мс).
-    /// </summary>
+    /// <summary>Устаревшее: см. MiDoubleAction ("none" = выключен).</summary>
     public bool MiDoubleClick { get; set; } = true;
 
-    /// <summary>
-    /// Что запускать AI-клавишей: путь к exe/файлу/URL (поддерживаются %ПЕРЕМЕННЫЕ%).
-    /// Пусто → Copilot (Win+C). Настраивается только правкой config.json.
-    /// </summary>
+    /// <summary>Устаревшее: см. AiKeyAction="launch" + AiKeyCommand.</summary>
     public string? AiKeyProgram { get; set; }
 
-    /// <summary>Аргументы командной строки для AiKeyProgram (опционально).</summary>
+    /// <summary>Устаревшее: аргументы для AiKeyProgram.</summary>
     public string? AiKeyArgs { get; set; }
 
     [JsonIgnore]
@@ -164,13 +183,48 @@ public sealed class AppConfig
 
     public static AppConfig Load()
     {
+        AppConfig cfg;
         try
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? Fresh();
+            cfg = File.Exists(FilePath)
+                ? JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? Fresh()
+                : Fresh();
         }
-        catch (Exception ex) { Log.Ex("AppConfig.Load", ex); /* повреждённый конфиг → дефолт */ }
-        return Fresh();
+        catch (Exception ex) { Log.Ex("AppConfig.Load", ex); cfg = Fresh(); /* повреждённый конфиг → дефолт */ }
+        cfg.MigrateKeyActions();
+        return cfg;
+    }
+
+    /// <summary>
+    /// Заполнить пустые действия клавиш дефолтами, перенеся старые опции (MiShortPress,
+    /// MiDoubleClick, SettingsKey, AiKeyProgram/Args). На диск не пишем — сохранится при
+    /// следующем изменении настроек. Публично для инструментов предпросмотра.
+    /// </summary>
+    public void MigrateKeyActions()
+    {
+        if (MiClickAction is null)
+        {
+            bool chargeFirst = string.Equals(MiShortPress, "charge", StringComparison.OrdinalIgnoreCase);
+            MiClickAction = chargeFirst ? "charge" : "modes";
+            MiDoubleAction ??= !MiDoubleClick ? "none" : (chargeFirst ? "modes" : "charge");
+        }
+        MiDoubleAction ??= "charge";
+        SettingsKeyAction ??= string.Equals(SettingsKey, "settings", StringComparison.OrdinalIgnoreCase)
+            ? "settings" : "charge";
+        if (AiKeyAction is null)
+        {
+            if (!string.IsNullOrWhiteSpace(AiKeyProgram))
+            {
+                // путь с пробелами берём в кавычки — AiKeyCommand хранит команду одной строкой
+                var p = AiKeyProgram.Trim();
+                var cmd = p.Contains(' ') ? $"\"{p}\"" : p;
+                if (!string.IsNullOrWhiteSpace(AiKeyArgs)) cmd += " " + AiKeyArgs.Trim();
+                AiKeyAction = "launch";
+                AiKeyCommand ??= cmd;
+            }
+            else AiKeyAction = "copilot";
+        }
+        ProjKeyAction ??= "projection";
     }
 
     /// <summary>Конфиг для первого старта (файла нет / повреждён): язык — по языку ОС.</summary>

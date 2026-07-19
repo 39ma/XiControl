@@ -25,7 +25,33 @@ public static class KeyActions
         catch (Exception ex) { Log.Ex("KeyActions.OpenSettings", ex); /* URI-обработчик может отсутствовать */ }
     }
 
-    /// <summary>Запустить произвольную программу/файл/URL (для настраиваемой AI-клавиши).</summary>
+    /// <summary>
+    /// Запустить команду одной строкой: путь к exe/файлу/URL + аргументы. Путь с пробелами —
+    /// в кавычках; строка без кавычек, целиком являющаяся существующим файлом, — тоже путь
+    /// (совместимость со старым AiKeyProgram без кавычек).
+    /// </summary>
+    public static void LaunchCommand(string command)
+    {
+        command = command.Trim();
+        string path;
+        string? args = null;
+        if (command.StartsWith('"'))
+        {
+            int end = command.IndexOf('"', 1);
+            if (end > 0) { path = command[1..end]; args = command[(end + 1)..].Trim(); }
+            else path = command.Trim('"');
+        }
+        else
+        {
+            int sp = command.IndexOf(' ');
+            if (sp > 0 && !File.Exists(Environment.ExpandEnvironmentVariables(command)))
+            { path = command[..sp]; args = command[(sp + 1)..].Trim(); }
+            else path = command;
+        }
+        Launch(path, string.IsNullOrWhiteSpace(args) ? null : args);
+    }
+
+    /// <summary>Запустить произвольную программу/файл/URL (действие "launch" у клавиш).</summary>
     public static void Launch(string path, string? args = null)
     {
         try

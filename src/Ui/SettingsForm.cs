@@ -380,28 +380,63 @@ public sealed class SettingsForm : Form
         return p;
     }
 
+    // Общий список действий для всех клавиш; порядок = порядок в комбо
+    private static readonly string[] KeyActionValues =
+    [
+        "modes", "charge", "panel", "owl", "monitor", "travel",
+        "projection", "settings", "copilot", "launch", "none",
+    ];
+
     private Panel BuildKeys()
     {
         var p = NewPane();
         AddHeader(p, "settings.tab.keys", "settings.keys.sub");
 
         AddGroup(p, "settings.keys.mi");
-        bool miModesFirst = !string.Equals(_cfg.MiShortPress, "charge", StringComparison.OrdinalIgnoreCase);
-        AddRow(p, "settings.mi.layout", "settings.mi.layout.desc",
-            Combo([Loc.T("settings.mi.modes"), Loc.T("settings.mi.charge")], miModesFirst ? 0 : 1,
-                i => { _cfg.MiShortPress = i == 0 ? "modes" : "charge"; _cfg.Save(); }, Sc(210)));
-        AddRow(p, "settings.mi.double", "settings.mi.double.desc",
-            Toggle(_cfg.MiDoubleClick, on => { _cfg.MiDoubleClick = on; _cfg.Save(); }));
+        AddKeySlot(p, "settings.key.mi.click", "settings.key.mi.click.desc",
+            () => _cfg.MiClickAction, v => _cfg.MiClickAction = v,
+            () => _cfg.MiClickCommand, v => _cfg.MiClickCommand = v);
+        AddKeySlot(p, "settings.key.mi.double", "settings.key.mi.double.desc",
+            () => _cfg.MiDoubleAction, v => _cfg.MiDoubleAction = v,
+            () => _cfg.MiDoubleCommand, v => _cfg.MiDoubleCommand = v);
+        AddNote(p, "settings.keys.mi.hold");
 
         AddGroup(p, "settings.keys.other");
-        bool keyCharge = !string.Equals(_cfg.SettingsKey, "settings", StringComparison.OrdinalIgnoreCase);
-        AddRow(p, "settings.key.settings", "settings.key.settings.desc",
-            Combo([Loc.T("settings.key.charge"), Loc.T("settings.key.windows")], keyCharge ? 0 : 1,
-                i => { _cfg.SettingsKey = i == 0 ? "charge" : "settings"; _cfg.Save(); }, Sc(210)));
-        AddRow(p, "settings.ai.program", "settings.ai.program.desc",
-            TextField(_cfg.AiKeyProgram ?? "", Sc(230), s =>
-            { _cfg.AiKeyProgram = string.IsNullOrWhiteSpace(s) ? null : s.Trim(); _cfg.Save(); }));
+        AddKeySlot(p, "settings.key.settings", "settings.key.settings.desc",
+            () => _cfg.SettingsKeyAction, v => _cfg.SettingsKeyAction = v,
+            () => _cfg.SettingsKeyCommand, v => _cfg.SettingsKeyCommand = v);
+        AddKeySlot(p, "settings.key.ai", "settings.key.ai.desc",
+            () => _cfg.AiKeyAction, v => _cfg.AiKeyAction = v,
+            () => _cfg.AiKeyCommand, v => _cfg.AiKeyCommand = v);
+        AddKeySlot(p, "settings.key.proj", "settings.key.proj.desc",
+            () => _cfg.ProjKeyAction, v => _cfg.ProjKeyAction = v,
+            () => _cfg.ProjKeyCommand, v => _cfg.ProjKeyCommand = v);
         return p;
+    }
+
+    // Слот клавиши: комбо со всеми действиями; для «Запустить программу…» ниже появляется
+    // поле команды (путь + аргументы). Смена действия пересобирает окно (поле показать/убрать).
+    private void AddKeySlot(Panel p, string titleKey, string descKey,
+        Func<string?> getAction, Action<string> setAction,
+        Func<string?> getCommand, Action<string?> setCommand)
+    {
+        string cur = getAction() ?? "none";
+        int idx = Array.IndexOf(KeyActionValues, cur);
+        if (idx < 0) idx = Array.IndexOf(KeyActionValues, "none"); // неизвестное значение из конфига
+        AddRow(p, titleKey, descKey,
+            Combo([.. KeyActionValues.Select(a => Loc.T("settings.act." + a))], idx, i =>
+            {
+                setAction(KeyActionValues[i]);
+                _cfg.Save();
+                BeginInvoke(new Action(BuildAll));
+            }, Sc(210)));
+        if (cur == "launch")
+        {
+            var tf = TextField(getCommand() ?? "", Sc(300), s =>
+            { setCommand(string.IsNullOrWhiteSpace(s) ? null : s.Trim()); _cfg.Save(); });
+            tf.PlaceholderText = "\"C:\\Program Files\\App\\app.exe\" --flag";
+            p.Controls.Add(SubRow("settings.key.command", tf));
+        }
     }
 
     private Panel BuildAbout()

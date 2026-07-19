@@ -339,6 +339,7 @@ public sealed class SettingsForm : Form
             HzCombo(_cfg.AcRefreshRate, hz => _act.SetRefreshRates(hz, _cfg.BatteryRefreshRate)));
         AddRow(p, "settings.hz.battery", "settings.hz.battery.desc",
             HzCombo(_cfg.BatteryRefreshRate, hz => _act.SetRefreshRates(_cfg.AcRefreshRate, hz)));
+        AddNote(p, "settings.hz.note");
         return p;
     }
 

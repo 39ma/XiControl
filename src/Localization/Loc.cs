@@ -58,6 +58,7 @@ public static class Loc
         ["settings.hz.ac.desc"]   = ["Если точной частоты нет — берётся ближайшая.", "If the exact rate is missing — the nearest is used.", "若无精确刷新率则取最接近值。"],
         ["settings.hz.battery"]   = ["От батареи", "On battery", "使用电池"],
         ["settings.hz.battery.desc"]= ["Обычно 60 Гц для экономии.", "Usually 60 Hz to save power.", "通常为 60 Hz 以省电。"],
+        ["settings.hz.note"]      = ["При смене частоты экран может на мгновение мигнуть или погаснуть — это нормально, так дисплей переключается на новый режим. Если нужная частота уже установлена, переключения не происходит.", "The screen may briefly flicker or go black when the refresh rate changes — that’s normal, the display is switching modes. If the target rate is already set, nothing is switched.", "切换刷新率时屏幕可能短暂闪烁或黑屏——这是正常现象，显示器正在切换模式。若目标刷新率已生效，则不会切换。"],
 
         ["settings.perf.sub"]     = ["Видимость режимов и поведение при запуске системы.", "Mode visibility and startup behavior.", "模式可见性与启动行为。"],
         ["settings.perf.modes"]   = ["Видимые режимы", "Visible modes", "可见模式"],

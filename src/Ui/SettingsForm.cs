@@ -81,14 +81,14 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = true;
         ShowInTaskbar = true;
-        StartPosition = FormStartPosition.CenterScreen;
+        StartPosition = FormStartPosition.Manual; // позицию считаем сами в Popup (всегда центр)
         KeyPreview = true;
         DoubleBuffered = true;
         Font = new Font("Segoe UI", 9f);
         try { Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!); } catch { /* иконки нет — не критично */ }
 
         _ = Handle; // форсируем хэндл (нужен DeviceDpi)
-        ClientSize = new Size(Sc(824), Sc(560));
+        ClientSize = new Size(Sc(824), Sc(700));
 
         BuildAll();
     }
@@ -101,6 +101,12 @@ public sealed class SettingsForm : Form
     public void Popup()
     {
         BuildAll();
+        // высота — чтобы вкладки влезали без прокрутки, но не выше рабочей области экрана;
+        // окно каждый раз открывается по центру экрана с курсором
+        var wa = Screen.FromPoint(Cursor.Position).WorkingArea;
+        int h = Math.Min(Sc(700), wa.Height - Sc(80));
+        if (ClientSize.Height != h) ClientSize = new Size(Sc(824), h);
+        Location = new Point(wa.Left + (wa.Width - Width) / 2, wa.Top + (wa.Height - Height) / 2);
         Show();
         if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
         Activate();

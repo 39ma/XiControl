@@ -172,9 +172,32 @@ public sealed class SettingsForm : Form
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
 
+    // WM_SETREDRAW: гасим перерисовку на время пересборки видимого окна — SuspendLayout
+    // замораживает только компоновку, и без этого чайлды мигают белым (смена языка и т.п.)
+    private const int WM_SETREDRAW = 0x000B;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
     // ---- Построение ----
 
     private void BuildAll()
+    {
+        // окно видно (смена языка/видимости режимов) — гасим перерисовку целиком,
+        // иначе пересборка мигает белым; в конце один Refresh
+        bool live = IsHandleCreated && Visible;
+        if (live) SendMessage(Handle, WM_SETREDRAW, (IntPtr)0, IntPtr.Zero);
+        try
+        {
+            BuildAllCore();
+        }
+        finally
+        {
+            if (live) { SendMessage(Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero); Refresh(); }
+        }
+    }
+
+    private void BuildAllCore()
     {
         ApplyTheme();
         SuspendLayout();

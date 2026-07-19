@@ -17,8 +17,11 @@ public sealed class OsdForm : Form
 
     private readonly System.Windows.Forms.Timer _display = new() { Interval = 2000 };
     private readonly System.Windows.Forms.Timer _fade = new() { Interval = 16 };
-    private readonly Font _titleFont = new("Segoe UI Semibold", 12.5f);
-    private readonly Font _subFont = new("Segoe UI", 9f);
+
+    // шрифты — от текущего DPI (как и вся геометрия Sc): пропорции с иконкой
+    // не разъезжаются после смены разрешения/масштаба экрана
+    private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 12.5f);
+    private Font SubFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 9f);
 
     private OsdKind _kind;
     private string _title = "";
@@ -90,11 +93,11 @@ public sealed class OsdForm : Form
 
     private (int w, int h, int titleH, int subH) Measure()
     {
-        var t = TextRenderer.MeasureText(_title, _titleFont);
+        var t = TextRenderer.MeasureText(_title, TitleFont);
         int subH = 0, subW = 0;
         if (!string.IsNullOrEmpty(_sub))
         {
-            var s = TextRenderer.MeasureText(_sub, _subFont);
+            var s = TextRenderer.MeasureText(_sub, SubFont);
             subH = s.Height; subW = s.Width;
         }
         int content = Math.Max(IconSize, Math.Max(t.Width, subW));
@@ -142,13 +145,13 @@ public sealed class OsdForm : Form
         DrawIcon(g, _kind, new RectangleF((Width - IconSize) / 2f, y, IconSize, IconSize));
         y += IconSize + GapIcon;
 
-        TextRenderer.DrawText(g, _title, _titleFont,
+        TextRenderer.DrawText(g, _title, TitleFont,
             new Rectangle(0, y, Width, titleH), TextCol,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
         y += titleH + GapText;
 
         if (subH > 0)
-            TextRenderer.DrawText(g, _sub, _subFont,
+            TextRenderer.DrawText(g, _sub, SubFont,
                 new Rectangle(0, y, Width, subH), DimCol,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
     }
@@ -202,7 +205,7 @@ public sealed class OsdForm : Form
         if (disposing)
         {
             _display.Dispose(); _fade.Dispose(); _gauge.Dispose();
-            _titleFont.Dispose(); _subFont.Dispose();
+            // шрифты общие (кэш ScaledFonts) — не диспозим
         }
         base.Dispose(disposing);
     }

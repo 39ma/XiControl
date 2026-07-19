@@ -45,14 +45,15 @@ public sealed class SettingsForm : Form
         (PerfMode.Turbo, "mode.turbo"), (PerfMode.FullSpeed, "mode.full"),
     ];
 
-    // шрифты общие на всё время жизни (Label шрифтом не владеет, в OnPaint не создаём) — как в QuickPanelForm
-    private static readonly Font HeadFont = new("Segoe UI Semibold", 15f);
-    private static readonly Font NameFont = new("Segoe UI Semibold", 14f);
-    private static readonly Font GroupFont = new("Segoe UI Semibold", 9.5f);
-    private static readonly Font TitleFont = new("Segoe UI", 10f);
-    private static readonly Font DescFont = new("Segoe UI", 8.5f);
-    private static readonly Font NoteFont = new("Segoe UI", 9f);
-    private static readonly Font CtlFont = new("Segoe UI", 9.5f);
+    // шрифты — из кэша ScaledFonts под текущий DPI (Label шрифтом не владеет, в OnPaint
+    // не создаём): пропорции с геометрией Sc держатся и после смены разрешения/масштаба
+    private Font HeadFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 15f);
+    private Font NameFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 14f);
+    private Font GroupFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 9.5f);
+    private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 10f);
+    private Font DescFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 8.5f);
+    private Font NoteFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 9f);
+    private Font CtlFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 9.5f);
 
     // палитра (заполняется в ApplyTheme по системной теме)
     private bool _dark;
@@ -803,7 +804,7 @@ public sealed class SettingsForm : Form
                 }
                 var gc = sel ? _o._accent : _o._text2;
                 DrawGlyph(g, Tabs[i].glyph, new RectangleF(rect.X + _o.Sc(12), rect.Y + (ItemH - _o.Sc(18)) / 2f, _o.Sc(18), _o.Sc(18)), gc);
-                TextRenderer.DrawText(g, Loc.T(Tabs[i].key), TitleFont,
+                TextRenderer.DrawText(g, Loc.T(Tabs[i].key), _o.TitleFont,
                     new Rectangle(rect.X + _o.Sc(40), rect.Y, rect.Width - _o.Sc(40), ItemH),
                     _o._text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }

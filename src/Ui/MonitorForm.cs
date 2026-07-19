@@ -24,10 +24,11 @@ public sealed class MonitorForm : Form
     private static readonly Color CpuCol = Color.FromArgb(90, 170, 255);
     private static readonly Color RamCol = Color.FromArgb(179, 157, 219);     // сиреневый (зелёный ушёл под заряд)
 
-    private static readonly Font TitleFont = new("Segoe UI Semibold", 11f);
-    private static readonly Font ValueFont = new("Segoe UI Semibold", 13f);
-    private static readonly Font LabelFont = new("Segoe UI", 8.5f);
-    private static readonly Font BigFont = new("Segoe UI Semibold", 15f); // вид «только ватты»
+    // шрифты — из кэша ScaledFonts под текущий DPI: не разъезжаются с геометрией после смены разрешения
+    private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
+    private Font ValueFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 13f);
+    private Font LabelFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 8.5f);
+    private Font BigFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 15f); // вид «только ватты»
 
     private const int Capacity = 180; // ~3 минуты при 1 Гц
 

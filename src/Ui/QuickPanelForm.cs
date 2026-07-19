@@ -50,11 +50,12 @@ public sealed class QuickPanelForm : Form
     private float[] _hoverT = [];
     private float _gaugeT;
 
-    // шрифты общие на всё время жизни (в OnPaint не создаём)
-    private static readonly Font TitleFont = new("Segoe UI Semibold", 11f);
-    private static readonly Font LabelFont = new("Segoe UI", 8.5f);
-    private static readonly Font CapFont = new("Segoe UI", 9f);
-    private static readonly Font PillFont = new("Segoe UI Semibold", 11f);
+    // шрифты — из кэша ScaledFonts под текущий DPI (в OnPaint не создаём):
+    // пропорции с геометрией Sc не разъезжаются после смены разрешения/масштаба
+    private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
+    private Font LabelFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 8.5f);
+    private Font CapFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 9f);
+    private Font PillFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
 
     /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
     public Action? Changed;

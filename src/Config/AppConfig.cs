@@ -12,6 +12,10 @@ public sealed class AppConfig
     public bool ChargeCare { get; set; } = false;
     public bool AutoStart { get; set; } = false;
 
+    /// <summary>Логировать ошибки и проблемы в %APPDATA%\XiControl\log.txt.
+    /// false — не пишется вообще ничего (диагностика по отчётам станет невозможна).</summary>
+    public bool LogEnabled { get; set; } = true;
+
     /// <summary>
     /// «В дорогу»: временный оверрайд «зарядить до 100%» поверх «беречь ~80%» (ChargeCare).
     /// Держит TrayApp: при включении заряжаем до 100%, по достижении 100% — OSD (+звук),
@@ -165,6 +169,11 @@ public sealed class AppConfig
     /// Нужен, чтобы включить тачпад обратно после перезапуска приложения: у выключенного
     /// тачпада HID-коллекции исчезают из системы и найти его иначе нечем. Не редактировать.</summary>
     public string? TouchpadDeviceId { get; set; }
+
+    /// <summary>Тачпад отключён персистентным путём (мягкое отключение не сработало —
+    /// фолбэк через SetupAPI, переживает перезагрузку). По этому флагу приложение на
+    /// старте включает тачпад само. Ставится/снимается автоматически.</summary>
+    public bool TouchpadPersistOff { get; set; }
 
     // ---- Устаревшие поля клавиш (до v0.8) — читаются только для миграции ----
 

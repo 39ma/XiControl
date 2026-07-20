@@ -10,10 +10,15 @@ internal static class Log
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "XiControl", "log.txt");
 
+    /// <summary>Опция «Логирование» (AppConfig.LogEnabled): false — не пишем вообще ничего.
+    /// До загрузки конфига — включено, чтобы не потерять ошибки самого старта.</summary>
+    public static volatile bool Enabled = true;
+
     public static void Ex(string where, Exception ex) => Write($"{where}: {ex.GetType().Name}: {ex.Message}");
 
     public static void Write(string message)
     {
+        if (!Enabled) return;
         try
         {
             lock (Sync)

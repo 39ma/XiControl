@@ -17,6 +17,7 @@ static class Program
         ApplicationConfiguration.Initialize();
 
         var cfg = AppConfig.Load();
+        Log.Enabled = cfg.LogEnabled; // до этой строчки лог включён — ошибки старта не теряем
         Loc.Current = cfg.Language;
 
         MifsClient mifs;

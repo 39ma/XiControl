@@ -142,6 +142,10 @@ public sealed class TrayApp : IDisposable
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
         _touchpad = new TouchpadControl(_cfg);
+        // страховка «не залипает»: если тачпад пришлось отключить персистентно,
+        // после перезагрузки включаем его сами (в фоне — PnP-вызовы небыстрые)
+        if (_cfg.TouchpadPersistOff)
+            Task.Run(() => Safe(() => { _touchpad.RestoreAfterBoot(); return true; }, false));
         _panel = new QuickPanelForm(_mifs, _cfg, _touchpad);
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
@@ -223,6 +227,10 @@ public sealed class TrayApp : IDisposable
             case Mifs.KeyMic: OnMicKey(value); break;
             case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
             case Mifs.KeyFnLock: OnFnLockKey(value); break;
+            default:
+                // другие модели шлют другие коды/value — лог помогает разбирать отчёты тестеров
+                Log.Write($"Key: необработанное событие code=0x{code:X2} value=0x{value:X2}");
+                break;
         }
     }
 

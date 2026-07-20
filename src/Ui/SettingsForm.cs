@@ -298,6 +298,14 @@ public sealed class SettingsForm : Form
             Toggle(_cfg.OwlMode, _act.SetOwlFeature));
         AddRow(p, "settings.touchpad.feature", "settings.touchpad.feature.desc",
             Toggle(_cfg.TouchpadFeature, on => { _cfg.TouchpadFeature = on; _cfg.Save(); }));
+        AddRow(p, "settings.log", "settings.log.desc",
+            Toggle(_cfg.LogEnabled, on =>
+            {
+                _cfg.LogEnabled = on;
+                _cfg.Save();
+                if (on) { Log.Enabled = true; Log.Write("Логирование включено"); }
+                else { Log.Write("Логирование выключено"); Log.Enabled = false; } // прощальная строчка — видно, что тишина намеренная
+            }));
         return p;
     }
 
@@ -433,12 +441,18 @@ public sealed class SettingsForm : Form
         string cur = getAction() ?? "none";
         int idx = Array.IndexOf(KeyActionValues, cur);
         if (idx < 0) idx = Array.IndexOf(KeyActionValues, "none"); // неизвестное значение из конфига
+        string prev = cur;
         AddRow(p, titleKey, descKey,
             Combo([.. KeyActionValues.Select(a => Loc.T("settings.act." + a))], idx, i =>
             {
-                setAction(KeyActionValues[i]);
+                string val = KeyActionValues[i];
+                setAction(val);
                 _cfg.Save();
-                BeginInvoke(new Action(BuildAll));
+                // пересборка — только чтобы показать/убрать поле команды: на каждом шаге
+                // выбора (колёсико, стрелки) она закрывала дропдаун и «сбрасывала» выбор
+                bool rebuild = prev == "launch" || val == "launch";
+                prev = val;
+                if (rebuild) BeginInvoke(new Action(BuildAll));
             }, Sc(210)));
         if (cur == "launch")
         {

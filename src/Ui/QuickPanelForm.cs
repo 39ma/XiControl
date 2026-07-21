@@ -35,15 +35,17 @@ public sealed class QuickPanelForm : Form
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
     private readonly TouchpadControl _tp;
+    private readonly TouchscreenControl _ts;
 
     // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
     private (PerfMode mode, string key, Color accent)[] _modes = [];
     private Rectangle[] _modeRects = [];
-    private Rectangle _care80, _care100, _travelCell, _tpCell, _hzCell, _awake, _close, _monBtn;
+    private Rectangle _care80, _care100, _travelCell, _tpCell, _tsCell, _hzCell, _awake, _close, _monBtn;
 
     private PerfMode? _mode;
     private bool _tpAvail, _tpOn; // тачпад: найден в системе / включён
-    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу, 17=тачпад
+    private bool _tsAvail, _tsOn; // сенсорный экран: найден в системе / включён
+    private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу, 17=тачпад, 18=тачскрин
 
     // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
     // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
@@ -68,11 +70,12 @@ public sealed class QuickPanelForm : Form
     /// <summary>Панель переключила режим «В дорогу» — трей запускает/останавливает наблюдение за 100%.</summary>
     public Action? TravelChanged;
 
-    public QuickPanelForm(MifsClient mifs, AppConfig cfg, TouchpadControl touchpad)
+    public QuickPanelForm(MifsClient mifs, AppConfig cfg, TouchpadControl touchpad, TouchscreenControl touchscreen)
     {
         _mifs = mifs;
         _cfg = cfg;
         _tp = touchpad;
+        _ts = touchscreen;
         ReloadModes();
         _anim.Tick += (_, _) =>
         {
@@ -122,6 +125,8 @@ public sealed class QuickPanelForm : Form
         try { _mode = _mifs.GetPerfMode(); } catch { _mode = null; }
         try { _tpAvail = _cfg.TouchpadFeature && _tp.Available; _tpOn = _tp.IsEnabled() ?? false; }
         catch { _tpAvail = false; }
+        try { _tsAvail = _cfg.TouchscreenFeature && _ts.Available; _tsOn = _ts.IsEnabled() ?? false; }
+        catch { _tsAvail = false; }
     }
 
     /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
@@ -167,19 +172,23 @@ public sealed class QuickPanelForm : Form
             _modeRects[i] = new Rectangle(x, modeY, w, cellH);
         }
 
-        // ряд заряда: [В дорогу] [80%] [100%] … [тачпад] [авто-герцовка] [Не спать]
+        // ряд заряда: [В дорогу] [80%] [100%] … [тачпад] [тачскрин] [авто-герцовка] [Не спать]
         int owlW = _cfg.OwlMode ? Sc(56) : 0;
         int hzW = Sc(56);
         int tpW = _tpAvail ? Sc(56) : 0;
+        int tsW = _tsAvail ? Sc(56) : 0;
         int travelW = Sc(46);
         int pillsW = content - travelW - gap - hzW - gap
-            - (tpW > 0 ? tpW + gap : 0) - (_cfg.OwlMode ? owlW + gap : 0);
+            - (tpW > 0 ? tpW + gap : 0) - (tsW > 0 ? tsW + gap : 0) - (_cfg.OwlMode ? owlW + gap : 0);
         int half = (pillsW - gap) / 2;
         _travelCell = new Rectangle(p, pillsY, travelW, pillsH);
         _care80 = new Rectangle(_travelCell.Right + gap, pillsY, half, pillsH);
         _care100 = new Rectangle(_care80.Right + gap, pillsY, half, pillsH);
         _tpCell = tpW > 0 ? new Rectangle(_care100.Right + gap, pillsY, tpW, pillsH) : Rectangle.Empty;
-        _hzCell = new Rectangle((tpW > 0 ? _tpCell.Right : _care100.Right) + gap, pillsY, hzW, pillsH);
+        int afterTp = tpW > 0 ? _tpCell.Right : _care100.Right;
+        _tsCell = tsW > 0 ? new Rectangle(afterTp + gap, pillsY, tsW, pillsH) : Rectangle.Empty;
+        int afterTs = tsW > 0 ? _tsCell.Right : afterTp;
+        _hzCell = new Rectangle(afterTs + gap, pillsY, hzW, pillsH);
         _awake = _cfg.OwlMode ? new Rectangle(_hzCell.Right + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
         _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
@@ -363,6 +372,18 @@ public sealed class QuickPanelForm : Form
                     BeginInvoke(() => { _tpOn = b; Invalidate(); });
             });
         }
+        else if (h == 18 && !_tsCell.IsEmpty)
+        {
+            // сенсорный экран: то же, что тачпад — оптимистичное переключение + фон
+            _tsOn = !_tsOn;
+            Invalidate();
+            Task.Run(() =>
+            {
+                var on = _ts.Toggle();
+                if (on is bool b && IsHandleCreated)
+                    BeginInvoke(() => { _tsOn = b; Invalidate(); });
+            });
+        }
     }
 
     private int HitTest(Point pt)
@@ -374,6 +395,7 @@ public sealed class QuickPanelForm : Form
         if (_care80.Contains(pt)) return 10;
         if (_care100.Contains(pt)) return 11;
         if (!_tpCell.IsEmpty && _tpCell.Contains(pt)) return 17;
+        if (!_tsCell.IsEmpty && _tsCell.Contains(pt)) return 18;
         if (_hzCell.Contains(pt)) return 15;
         if (!_awake.IsEmpty && _awake.Contains(pt)) return 13;
         return -1;
@@ -454,6 +476,17 @@ public sealed class QuickPanelForm : Form
                 _tpOn ? SvgIcons.Touchpad : SvgIcons.TouchpadOff,
                 new RectangleF(_tpCell.X + (_tpCell.Width - tpIcon) / 2f, _tpCell.Y + (_tpCell.Height - tpIcon) / 2f, tpIcon, tpIcon),
                 !_tpOn || _hover == 17 ? 1f : 0.6f);
+        }
+
+        // сенсорный экран: та же логика подсветки «выключен = заметнее», что и у тачпада
+        if (!_tsCell.IsEmpty)
+        {
+            DrawCell(g, _tsCell, !_tsOn, _hover == 18, Color.FromArgb(255, 82, 82), Sc(10));
+            float tsIcon = Math.Min(_tsCell.Width, _tsCell.Height) - Sc(8);
+            SvgIcons.Draw(g,
+                _tsOn ? SvgIcons.Touchscreen : SvgIcons.TouchscreenOff,
+                new RectangleF(_tsCell.X + (_tsCell.Width - tsIcon) / 2f, _tsCell.Y + (_tsCell.Height - tsIcon) / 2f, tsIcon, tsIcon),
+                !_tsOn || _hover == 18 ? 1f : 0.6f);
         }
 
         // авто-герцовка: монитор с круговыми стрелками, активна при включённой опции

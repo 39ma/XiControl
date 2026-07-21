@@ -8,7 +8,7 @@
 **XiControl** — трей-утилита для ноутбуков Xiaomi/Redmi (Windows 10/11 x64): защита заряда
 батареи (+ разовый заряд «В дорогу»), режимы производительности, OSD, переназначаемые
 Mi-кнопка и «мёртвые» клавиши, авто-герцовка, запоминание яркости по питанию, «режим совы»,
-тачпад вкл/выкл, виджет «Монитор», окно настроек в стиле Win11. Всё управление железом —
+тачпад и сенсорный экран вкл/выкл, виджет «Монитор», окно настроек в стиле Win11. Всё управление железом —
 через штатный WMI-интерфейс прошивки `MiCommonInterface` (протокол MIFS, ODM Bitland).
 То, что делается чистым Win32 (частота экрана, яркость, тачпад, электропитание), делается
 чистым Win32.
@@ -122,8 +122,10 @@ WMI-событий). `Program.cs`: single-instance mutex → `MifsClient` → `T
   питания И перед уходом в сон/shutdown — EC теряет его на переходах), `RefreshRateGuard`/
   `RefreshRate` (авто-герцовка, чистый `ChangeDisplaySettings`), `PowerProfileGuard` (режим
   по питанию + независимое запоминание яркости), `Brightness` (WMI ACPI-подсветка),
-  `TouchpadControl` (вкл/выкл тачпада через SetupAPI/CfgMgr32 — отключается родительский
-  узел I2C HID, без PERSIST), `AutoStart` (задача планировщика + самопочинка пути),
+  `TouchpadControl`/`TouchscreenControl` (вкл/выкл тачпада и сенсорного экрана через
+  SetupAPI/CfgMgr32 — отключается родительский узел I2C HID, без PERSIST; общая механика в
+  базовом `HidNodeToggle`, разница лишь в HID-коллекции: тачпад U:0005, экран U:0004),
+  `AutoStart` (задача планировщика + самопочинка пути),
   `AwakeMode` («режим совы»), `MicControl`, `KeyActions`, `Sound` (WAV-джинглы).
 - `src/Config/AppConfig.cs` — config.json (+ миграции старых опций в `MigrateKeyActions`);
   `src/Localization/Loc.cs` — RU/EN/ZH.

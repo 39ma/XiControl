@@ -299,6 +299,8 @@ public sealed class SettingsForm : Form
             Toggle(_cfg.OwlMode, _act.SetOwlFeature));
         AddRow(p, "settings.touchpad.feature", "settings.touchpad.feature.desc",
             Toggle(_cfg.TouchpadFeature, on => { _cfg.TouchpadFeature = on; _cfg.Save(); }));
+        AddRow(p, "settings.touchscreen.feature", "settings.touchscreen.feature.desc",
+            Toggle(_cfg.TouchscreenFeature, on => { _cfg.TouchscreenFeature = on; _cfg.Save(); }));
         AddRow(p, "settings.log", "settings.log.desc",
             Toggle(_cfg.LogEnabled, on =>
             {
@@ -439,7 +441,7 @@ public sealed class SettingsForm : Form
     // Общий список действий для всех клавиш; порядок = порядок в комбо
     private static readonly string[] KeyActionValues =
     [
-        "modes", "charge", "panel", "owl", "monitor", "travel", "touchpad",
+        "modes", "charge", "panel", "owl", "monitor", "travel", "touchpad", "touchscreen",
         "projection", "settings", "copilot", "launch", "none",
     ];
 

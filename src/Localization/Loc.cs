@@ -115,6 +115,7 @@ public static class Loc
         ["settings.act.monitor"]  = ["Монитор", "Monitor", "监视器"],
         ["settings.act.travel"]   = ["Режим «В дорогу»", "Travel mode", "出行模式"],
         ["settings.act.touchpad"] = ["Тачпад вкл/выкл", "Touchpad on/off", "触控板开关"],
+        ["settings.act.touchscreen"] = ["Сенсорный экран вкл/выкл", "Touchscreen on/off", "触摸屏开关"],
         ["settings.act.projection"]= ["Проекция (Win+P)", "Projection (Win+P)", "投影（Win+P）"],
         ["settings.act.settings"] = ["Параметры Windows", "Windows Settings", "Windows 设置"],
         ["settings.act.copilot"]  = ["Copilot (Win+C)", "Copilot (Win+C)", "Copilot（Win+C）"],
@@ -125,6 +126,8 @@ public static class Loc
         ["settings.owl.feature.desc"]= ["Показывать сову в панели и пункт меню (не гасить экран / не спать).", "Show the owl in the panel and menu (keep screen on / no sleep).", "在面板和菜单中显示猫头鹰（保持屏幕常亮/不休眠）。"],
         ["settings.touchpad.feature"] = ["Управление тачпадом", "Touchpad control", "触控板控制"],
         ["settings.touchpad.feature.desc"]= ["Ячейка в панели и действие для клавиш. Отключённый тачпад всегда включается сам после перезагрузки.", "Panel cell and key action. A disabled touchpad always re-enables itself after a reboot.", "面板单元格与按键动作。禁用的触控板重启后总会自动恢复。"],
+        ["settings.touchscreen.feature"] = ["Управление сенсорным экраном", "Touchscreen control", "触摸屏控制"],
+        ["settings.touchscreen.feature.desc"]= ["Ячейка в панели и действие для клавиш. Отключённый сенсорный экран всегда включается сам после перезагрузки.", "Panel cell and key action. A disabled touchscreen always re-enables itself after a reboot.", "面板单元格与按键动作。禁用的触摸屏重启后总会自动恢复。"],
         ["settings.log"]          = ["Логировать ошибки и проблемы", "Log errors and issues", "记录错误与问题"],
         ["settings.log.desc"]     = ["Журнал %APPDATA%\\XiControl\\log.txt — пригодится для отчёта об ошибке. Выкл — не пишется ничего.", "The %APPDATA%\\XiControl\\log.txt journal — useful for bug reports. Off — nothing is written at all.", "日志位于 %APPDATA%\\XiControl\\log.txt，便于反馈问题。关闭后完全不写入。"],
 
@@ -151,6 +154,9 @@ public static class Loc
 
         ["osd.touchpad.on"]  = ["Тачпад включён", "Touchpad on", "触控板已开启"],
         ["osd.touchpad.off"] = ["Тачпад выключен", "Touchpad off", "触控板已关闭"],
+
+        ["osd.touchscreen.on"]  = ["Сенсорный экран включён", "Touchscreen on", "触摸屏已开启"],
+        ["osd.touchscreen.off"] = ["Сенсорный экран выключен", "Touchscreen off", "触摸屏已关闭"],
 
         ["menu.monitor"]    = ["Монитор", "Monitor", "监视器"],
         ["monitor.title"]   = ["Монитор", "Monitor", "监视器"],

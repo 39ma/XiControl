@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace XiControl.Ui;
 
-public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff, TouchpadOn, TouchpadOff }
+public enum OsdKind { Charging, ChargingLimited, ChargingWeak, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff, TouchpadOn, TouchpadOff }
 
 /// <summary>
 /// OSD-оверлей: тёмная скруглённая карточка по центру с иконкой и текстом,
@@ -15,7 +15,12 @@ public sealed class OsdForm : Form
     private static readonly Color TextCol = Color.FromArgb(240, 240, 240);
     private static readonly Color DimCol = Color.FromArgb(150, 150, 155);
 
-    private readonly System.Windows.Forms.Timer _display = new() { Interval = 2000 };
+    // сколько OSD висит до затухания. Единая база, чтобы всплывашки читались одинаково;
+    // «Авто» чуть дольше — стрелка спидометра успевает плавно «настроиться».
+    private const int DisplayMs = 2800;
+    private const int DisplayMsAuto = 3400;
+
+    private readonly System.Windows.Forms.Timer _display = new() { Interval = DisplayMs };
     private readonly System.Windows.Forms.Timer _fade = new() { Interval = 16 };
 
     // шрифты — от текущего DPI (как и вся геометрия Sc): пропорции с иконкой
@@ -121,7 +126,7 @@ public sealed class OsdForm : Form
         Opacity = 1.0;
         _gauge.Stop();
         // для «Авто» показываем дольше — стрелка успевает плавно «настроиться»
-        _display.Interval = kind == OsdKind.Auto ? 3400 : 2000;
+        _display.Interval = kind == OsdKind.Auto ? DisplayMsAuto : DisplayMs;
         if (IsAnimated(kind)) { _gaugeT = 0f; _gauge.Start(); }
         Invalidate();
         if (!Visible) Show();
@@ -197,6 +202,7 @@ public sealed class OsdForm : Form
             OsdKind.TravelOff       => SvgIcons.TravelOff,
             OsdKind.TouchpadOn      => SvgIcons.Touchpad,
             OsdKind.TouchpadOff     => SvgIcons.TouchpadOff,
+            OsdKind.ChargingWeak    => SvgIcons.ChargerWeak,
             _ => SvgIcons.Settings,
         };
         SvgIcons.Draw(g, name, r);

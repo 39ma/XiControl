@@ -26,9 +26,12 @@ public static class Mifs
     public const byte CmdMic = 0x0A;     // микрофон
     public const byte CmdCharge = 0x10;  // защита заряда
 
-    // под-функции заряда (offset 4)
+    // под-функции команды 0x10 (offset 4). Помимо защиты заряда, эта группа отдаёт
+    // сенсоры — подтверждено на TM2424 (см. reference/probe-sensors.ps1):
     public const byte ChargeSubEnable = 0x02;  // val 1=беречь(~80%), 0=до 100%
     public const byte ChargeSubFlag = 0x03;    // индикатор зоны заряда
+    public const byte SensorAdapterWatts = 0x06; // ватты подключённого PD-адаптера (0 = нет/не PD)
+    public const byte SensorBatteryHealth = 0x01; // SOH1: здоровье батареи, % от исходной ёмкости
 
     // Mi-кнопка шлёт пару: 0x25 (нажатие) + 0x26 (отпускание).
     // Короткое нажатие = цикл режимов, долгое (удержание) = панель — логика в TrayApp.

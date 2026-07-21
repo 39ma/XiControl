@@ -19,7 +19,8 @@ public static class SvgIcons
     public const string BatterySaverOff = "battery-saver-off";
     public const string Travel = "travel";
     public const string Touchpad = "touchpad";
-    public const string TouchpadOff = "touchpad-off";           // чемодан с молнией — «В дорогу» включён (статично)
+    public const string TouchpadOff = "touchpad-off";
+    public const string ChargerWeak = "charger-weak";           // чемодан с молнией — «В дорогу» включён (статично)
     public const string TravelOff = "travel-off";    // чемодан без молнии — «В дорогу» выключен / корпус для анимации
     public const string TravelBolt = "travel-bolt";  // молния отдельно — мигает поверх travel-off
     public const string KeyboardBacklight = "keyboard-backlight";

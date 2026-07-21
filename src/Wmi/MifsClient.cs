@@ -89,5 +89,22 @@ public sealed class MifsClient : IDisposable
         }
     }
 
+    // ---- Сенсоры (та же группа команд 0x10, driver-free) ----
+
+    /// <summary>Мощность подключённого адаптера в ваттах; 0 — не подключён или не-PD
+    /// (обычный USB мощность не сообщает). Значение — согласованная PD-мощность БП.</summary>
+    public int GetAdapterWatts()
+    {
+        var r = Get(Mifs.CmdCharge, Mifs.SensorAdapterWatts);
+        return r.Ok ? r.Val6 : 0;
+    }
+
+    /// <summary>Здоровье батареи (SOH1), % от исходной ёмкости; null — не прочиталось.</summary>
+    public int? GetBatteryHealth()
+    {
+        var r = Get(Mifs.CmdCharge, Mifs.SensorBatteryHealth);
+        return r.Ok ? r.Val6 : null;
+    }
+
     public void Dispose() => _inst.Dispose();
 }

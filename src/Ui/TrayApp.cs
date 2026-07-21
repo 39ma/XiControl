@@ -408,7 +408,19 @@ public sealed class TrayApp : IDisposable
 
         if (online)
         {
-            if (_cfg.TravelMode)
+            // мощность подключённого адаптера (PD): дописываем в OSD и, если ниже порога,
+            // показываем предупреждение о слабом зарядке. 0 = не PD/не сообщил — не трогаем.
+            int watts = Safe(() => _mifs.GetAdapterWatts(), 0);
+            if (_cfg.ChargerWattsOsd && watts > 0)
+            {
+                string w = Loc.T("osd.charger.watts", watts);
+                sub = sub is null ? w : $"{sub} • {w}";
+            }
+            bool weak = _cfg.WeakChargerWatts > 0 && watts > 0 && watts < _cfg.WeakChargerWatts;
+
+            if (weak)
+                _osd.Flash(OsdKind.ChargingWeak, Loc.T("osd.charger.weak"), sub);
+            else if (_cfg.TravelMode)
                 _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub")); // «Режим В дорогу» / «Заряжаем до 100%»
             else if (_cfg.ChargeCare)
                 _osd.Flash(OsdKind.ChargingLimited, Loc.T("osd.charging.limited", Mifs.ChargeThresholdPercent), sub);

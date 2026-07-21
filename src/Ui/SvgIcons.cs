@@ -20,6 +20,8 @@ public static class SvgIcons
     public const string Travel = "travel";
     public const string Touchpad = "touchpad";
     public const string TouchpadOff = "touchpad-off";           // чемодан с молнией — «В дорогу» включён (статично)
+    public const string Touchscreen = "touchscreen";            // экран в рамке + тап-жест — сенсорный экран вкл
+    public const string TouchscreenOff = "touchscreen-off";     // то же серым — сенсорный экран выкл
     public const string TravelOff = "travel-off";    // чемодан без молнии — «В дорогу» выключен / корпус для анимации
     public const string TravelBolt = "travel-bolt";  // молния отдельно — мигает поверх travel-off
     public const string KeyboardBacklight = "keyboard-backlight";

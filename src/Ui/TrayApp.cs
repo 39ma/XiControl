@@ -14,6 +14,7 @@ public sealed class TrayApp : IDisposable
     private readonly MifsClient _mifs;
     private readonly AppConfig _cfg;
     private TouchpadControl _touchpad = null!; // создаётся в конструкторе до панели
+    private TouchscreenControl _touchscreen = null!; // то же — сенсорный экран
     private bool _dark = Theme.IsDark();
     private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
@@ -142,11 +143,14 @@ public sealed class TrayApp : IDisposable
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
         _touchpad = new TouchpadControl(_cfg);
-        // страховка «не залипает»: если тачпад пришлось отключить персистентно,
-        // после перезагрузки включаем его сами (в фоне — PnP-вызовы небыстрые)
+        _touchscreen = new TouchscreenControl(_cfg);
+        // страховка «не залипает»: если тачпад/экран пришлось отключить персистентно,
+        // после перезагрузки включаем их сами (в фоне — PnP-вызовы небыстрые)
         if (_cfg.TouchpadPersistOff)
             Task.Run(() => Safe(() => { _touchpad.RestoreAfterBoot(); return true; }, false));
-        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad);
+        if (_cfg.TouchscreenPersistOff)
+            Task.Run(() => Safe(() => { _touchscreen.RestoreAfterBoot(); return true; }, false));
+        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
         _panel.TravelChanged = OnPanelTravelChanged;
@@ -247,6 +251,7 @@ public sealed class TrayApp : IDisposable
             case "monitor": ToggleMonitor(); break;
             case "travel": SetTravel(!_cfg.TravelMode); break;  // без ChargeCare внутри не включится
             case "touchpad": if (_cfg.TouchpadFeature) ToggleTouchpadAction(); break; // фича скрыта — не трогаем
+            case "touchscreen": if (_cfg.TouchscreenFeature) ToggleTouchscreenAction(); break; // фича скрыта — не трогаем
             case "projection": KeyActions.Projection(); break;
             case "settings": KeyActions.OpenSettings(); break;
             case "copilot": KeyActions.Copilot(); break;
@@ -267,6 +272,19 @@ public sealed class TrayApp : IDisposable
             if (_panel.Visible) _panel.RefreshUi();
             else _osd.Flash(b ? OsdKind.TouchpadOn : OsdKind.TouchpadOff,
                             Loc.T(b ? "osd.touchpad.on" : "osd.touchpad.off"));
+        }));
+    });
+
+    // Действие «сенсорный экран вкл/выкл» — то же самое, что тачпад, но для дигитайзера экрана.
+    private void ToggleTouchscreenAction() => Task.Run(() =>
+    {
+        bool? on = Safe<bool?>(() => _touchscreen.Toggle(), null);
+        if (on is not bool b) return;
+        _osd.BeginInvoke(new Action(() =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else _osd.Flash(b ? OsdKind.TouchscreenOn : OsdKind.TouchscreenOff,
+                            Loc.T(b ? "osd.touchscreen.on" : "osd.touchscreen.off"));
         }));
     });
 

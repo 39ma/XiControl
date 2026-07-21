@@ -3,6 +3,7 @@ using System.Management;
 using System.Runtime.InteropServices;
 using XiControl.Config;
 using XiControl.Localization;
+using XiControl.Wmi;
 
 namespace XiControl.Ui;
 
@@ -23,6 +24,7 @@ public sealed class MonitorForm : Form
     private static readonly Color ChargeCol = Color.FromArgb(52, 199, 89);    // зелёный — заряд в батарею (вверх)
     private static readonly Color CpuCol = Color.FromArgb(90, 170, 255);
     private static readonly Color RamCol = Color.FromArgb(179, 157, 219);     // сиреневый (зелёный ушёл под заряд)
+    private static readonly Color TempCol = Color.FromArgb(255, 111, 97);     // коралловый — температура (тепло)
 
     // шрифты — из кэша ScaledFonts под текущий DPI: не разъезжаются с геометрией после смены разрешения
     private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
@@ -36,10 +38,17 @@ public sealed class MonitorForm : Form
     private readonly List<float> _power = new(); // Вт со знаком: + заряд в батарею, − разряд; NaN = от сети без заряда
     private readonly List<float> _cpu = new();   // 0..100
     private readonly List<float> _ram = new();   // 0..100
+    private readonly List<float> _temp = new();  // °C горячей точки (Intel DPTF); NaN = нет данных
+
+    private const float TempMax = 100f; // верх шкалы графика температуры, °C (троттлинг ~95–100)
 
     private ManagementObjectSearcher? _battery;
+    private ManagementObjectSearcher? _thermal;
     private long _prevIdle, _prevKernel, _prevUser;
     private float _ramUsedGb, _ramTotalGb;
+    private int _adapterWatts; // ватты подключённого PD-БП (0 — нет/не PD); MIFS, driver-free
+    private bool _hasTemp;     // на этой модели DPTF отдаёт температуры → резервируем строку/высоту
+    private bool _tempOff;     // класс DPTF отсутствует — больше не опрашиваем
 
     private Rectangle _close, _viewBtn, _expandBtn;
     private bool _closeHover, _viewHover, _expandHover;
@@ -50,10 +59,12 @@ public sealed class MonitorForm : Form
     private int _corner; // скругление текущего вида (общее для Region и рамки)
 
     private readonly AppConfig _cfg;
+    private readonly MifsClient _mifs;
 
-    public MonitorForm(AppConfig cfg)
+    public MonitorForm(AppConfig cfg, MifsClient mifs)
     {
         _cfg = cfg;
+        _mifs = mifs;
         _view = cfg.MonitorView?.ToLowerInvariant() switch
         {
             "mini" => ViewKind.Mini,
@@ -89,9 +100,9 @@ public sealed class MonitorForm : Form
     {
         if (Visible) { Hide(); return; }
 
-        _power.Clear(); _cpu.Clear(); _ram.Clear();
+        _power.Clear(); _cpu.Clear(); _ram.Clear(); _temp.Clear();
         _prevIdle = _prevKernel = _prevUser = 0;
-        Sample(); // первая точка сразу
+        Sample(); // первая точка сразу (заодно определит наличие DPTF-температур до ApplyView)
 
         ApplyView();
 
@@ -132,7 +143,7 @@ public sealed class MonitorForm : Form
                 _expandBtn = Rectangle.Empty;
                 break;
             default:
-                w = Sc(400); h = Sc(96) * 3 + Sc(52);
+                w = Sc(400); h = Sc(96) * (_hasTemp ? 4 : 3) + Sc(52); // + строка температуры, если DPTF отдаёт
                 _corner = Sc(18);
                 _close = new Rectangle(w - Sc(16) - Sc(22), Sc(14), Sc(22), Sc(22)); // как в панели
                 _viewBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
@@ -231,6 +242,37 @@ public sealed class MonitorForm : Form
         Push(_cpu, SampleCpu());
         Push(_ram, SampleRam());
         Push(_power, SamplePowerWatts());
+        Push(_temp, SampleTempC());
+        try { _adapterWatts = _mifs.GetAdapterWatts(); } catch (Exception ex) { Log.Ex("Monitor.Adapter", ex); _adapterWatts = 0; }
+    }
+
+    /// <summary>
+    /// Температура «горячей точки» через Intel DPTF (WMI EsifDeviceInformation) — driver-free:
+    /// провайдер идёт со штатными драйверами Intel. Берём максимум среди активных доменов — это
+    /// честная температура самого горячего узла, без догадок «где CPU, где GPU». Значение уже в °C.
+    /// Класса нет на модели → тихо выключаемся (_tempOff), строку температуры не показываем.
+    /// </summary>
+    private float SampleTempC()
+    {
+        if (_tempOff) return float.NaN;
+        try
+        {
+            _thermal ??= new ManagementObjectSearcher(@"root\wmi",
+                "SELECT Temperature FROM EsifDeviceInformation");
+            int max = 0; bool any = false;
+            foreach (ManagementObject o in _thermal.Get())
+            {
+                any = true;
+                object? t = o["Temperature"];
+                o.Dispose();
+                if (t is null) continue;
+                int c = Convert.ToInt32(t);
+                if (c > max && c < 130) max = c; // >130 °C — неинициализированный домен, отбрасываем
+            }
+            if (any) _hasTemp = true; else _tempOff = true; // класс есть → резервируем строку; пусто → датчиков нет
+            return max > 0 ? max : float.NaN;
+        }
+        catch (Exception ex) { Log.Ex("Monitor.Temp", ex); _thermal = null; _tempOff = true; return float.NaN; }
     }
 
     private static void Push(List<float> list, float v)
@@ -324,12 +366,21 @@ public sealed class MonitorForm : Form
         float powerMax = NiceMax(_power);
         DrawRow(g, new Rectangle(Sc(16), top, Width - Sc(32), rowH),
             Loc.T("monitor.power"), powerText, pColor, _power, powerMax,
+            sub: _adapterWatts > 0 ? Loc.T("monitor.adapter", _adapterWatts) : null, // рейтинг подключённого БП
             scaleLabel: Loc.T("monitor.watts.scale", powerMax), colored: true);
         DrawRow(g, new Rectangle(Sc(16), top + rowH, Width - Sc(32), rowH),
             "CPU", _cpu.Count > 0 && !float.IsNaN(_cpu[^1]) ? $"{_cpu[^1]:0}%" : "—", CpuCol, _cpu, 100f);
         DrawRow(g, new Rectangle(Sc(16), top + rowH * 2, Width - Sc(32), rowH),
             "RAM", _ram.Count > 0 ? $"{_ram[^1]:0}%" : "—", RamCol, _ram, 100f,
             _ramTotalGb > 0 ? Loc.T("monitor.ram.of", _ramUsedGb, _ramTotalGb) : null);
+
+        if (_hasTemp)
+        {
+            float tc = _temp.Count > 0 ? _temp[^1] : float.NaN;
+            DrawRow(g, new Rectangle(Sc(16), top + rowH * 3, Width - Sc(32), rowH),
+                Loc.T("monitor.temp"), float.IsNaN(tc) ? "—" : Loc.T("monitor.temp.c", (int)tc), TempCol, _temp, TempMax,
+                scaleLabel: Loc.T("monitor.temp.c", (int)TempMax));
+        }
     }
 
     // Мини-вид: три индикатора в строку без графиков, подписи латиницей во всех локалях
@@ -461,6 +512,7 @@ public sealed class MonitorForm : Form
         {
             _tick.Dispose();
             _battery?.Dispose();
+            _thermal?.Dispose();
         }
         base.Dispose(disposing);
     }

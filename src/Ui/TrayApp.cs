@@ -162,6 +162,19 @@ public sealed class TrayApp : IDisposable
         // Лёгкий опрос: держим значок в соответствии с реальным режимом (любой источник)
         _iconTimer.Tick += (_, _) => UpdateTrayIcon();
         _iconTimer.Start();
+
+        // «Прогрев» трей-меню: без него самый первый клик по значку проглатывается —
+        // первый показ ContextMenuStrip после старта инициализирует ленивые ресурсы
+        // (хэндл меню, первый WMI-вызов в BuildMenu, передний план приложения), и до
+        // этого показ закрывается сразу. Делаем это сами на первом холостом ходу цикла
+        // сообщений, за экраном и с мгновенным закрытием — пользователь ничего не видит.
+        _osd.BeginInvoke(new Action(PrimeMenu));
+    }
+
+    private void PrimeMenu()
+    {
+        try { _menu.Show(new Point(-32000, -32000)); _menu.Close(); }
+        catch (Exception ex) { Log.Ex(nameof(PrimeMenu), ex); }
     }
 
     private void UpdateTrayIcon(bool force = false)
@@ -553,6 +566,7 @@ public sealed class TrayApp : IDisposable
                 SetAutoHz = ToggleAutoHz,
                 SetRefreshRates = SetRefreshRates,
                 SetOwlFeature = ToggleOwlFeature,
+                GetBatteryHealth = () => Safe(() => _mifs.GetBatteryHealth(), (int?)null),
             };
             _settings = new SettingsForm(_cfg, act);
         }
@@ -828,7 +842,7 @@ public sealed class TrayApp : IDisposable
 
     private void ShowMonitor()
     {
-        _monitor ??= new MonitorForm(_cfg);
+        _monitor ??= new MonitorForm(_cfg, _mifs);
         _monitor.Popup();
     }
 

@@ -53,6 +53,9 @@ public static class Loc
         ["settings.charger.watts.desc"]= ["Ватты подключённого адаптера при подключении зарядки (только PD-адаптеры).", "Wattage of the connected adapter when charging starts (PD adapters only).", "接通充电时显示适配器功率（仅限 PD 适配器）。"],
         ["settings.charger.weak"] = ["Предупреждать о слабом", "Warn if underpowered", "功率不足时提醒"],
         ["settings.charger.weak.desc"]= ["Если подключён адаптер мощностью ниже порога — OSD с предупреждением о медленном заряде.", "If a connected adapter is below this wattage — an OSD warns about slow charging.", "若适配器功率低于阈值，则弹出慢充提醒。"],
+        ["settings.battery.state"]= ["Состояние", "Condition", "状态"],
+        ["settings.battery.health"]= ["Здоровье батареи", "Battery health", "电池健康度"],
+        ["settings.battery.health.desc"]= ["Оценка текущей ёмкости относительно новой батареи.", "Estimated current capacity relative to a new battery.", "相对于新电池的当前容量估算。"],
 
         ["settings.display.sub"]  = ["Частота обновления в зависимости от питания.", "Refresh rate depending on the power source.", "根据电源自动切换刷新率。"],
         ["settings.hz.auto"]      = ["Авто-частота по питанию", "Auto refresh rate by power", "按电源自动刷新率"],
@@ -150,7 +153,10 @@ public static class Loc
         ["monitor.watts"]   = ["{0:0.0} Вт", "{0:0.0} W", "{0:0.0} 瓦"],
         ["monitor.na"]      = ["— от сети", "— on AC", "— 交流供电"],
         ["monitor.ram.of"]  = ["{0:0.0} / {1:0.0} ГБ", "{0:0.0} / {1:0.0} GB", "{0:0.0} / {1:0.0} GB"],
+        ["monitor.adapter"] = ["Адаптер {0} Вт", "Adapter {0} W", "适配器 {0} 瓦"],
         ["monitor.watts.scale"] = ["{0:0} Вт", "{0:0} W", "{0:0} 瓦"],
+        ["monitor.temp"]    = ["Температура", "Temperature", "温度"],
+        ["monitor.temp.c"]  = ["{0} °C", "{0} °C", "{0} °C"],
 
         ["osd.charging"]         = ["Зарядка", "Charging", "充电中"],
         ["osd.charging.limited"] = ["Зарядка до {0}%", "Charging to {0}%", "充电至 {0}%"],

@@ -27,6 +27,7 @@ public sealed class SettingsActions
     public Action<bool> SetAutoHz = _ => { };
     public Action<int, int> SetRefreshRates = (_, _) => { };       // ac, batt
     public Action<bool> SetOwlFeature = _ => { };
+    public Func<int?> GetBatteryHealth = () => null;               // SOH1 %, null = прошивка не отдаёт
 }
 
 /// <summary>
@@ -336,7 +337,36 @@ public sealed class SettingsForm : Form
         browse.AutoSize = false;
         browse.Size = new Size(Sc(92), Sc(28));
         AddRow(p, "settings.travel.file", "settings.travel.file.desc", Pair(soundBox, browse));
+
+        AddGroup(p, "settings.charger");
+        AddRow(p, "settings.charger.watts", "settings.charger.watts.desc",
+            Toggle(_cfg.ChargerWattsOsd, on => { _cfg.ChargerWattsOsd = on; _cfg.Save(); }));
+        // порог «слабого зарядника»: 0 = выкл, иначе Вт
+        int[] thresholds = [0, 30, 45, 60, 90];
+        AddRow(p, "settings.charger.weak", "settings.charger.weak.desc",
+            Combo([.. thresholds.Select(t => t == 0 ? Loc.T("settings.act.none") : Loc.T("osd.charger.watts", t))],
+                Math.Max(0, Array.IndexOf(thresholds, _cfg.WeakChargerWatts)),
+                i => { _cfg.WeakChargerWatts = thresholds[i]; _cfg.Save(); }, Sc(120)));
+
+        // здоровье батареи (SOH1) — только чтение; прячем, если прошивка не отдаёт значение
+        if (_act.GetBatteryHealth() is int soh && soh > 0)
+        {
+            AddGroup(p, "settings.battery.state");
+            AddRow(p, "settings.battery.health", "settings.battery.health.desc", ValueLabel($"{soh}%"));
+        }
         return p;
+    }
+
+    // Правый read-only индикатор для инфо-строк (как контрол в AddRow, но без интерактива).
+    private Label ValueLabel(string text)
+    {
+        int w = TextRenderer.MeasureText(text, CtlFont).Width + Sc(4);
+        return new Label
+        {
+            Text = text, AutoSize = false, Width = w, Height = Sc(22),
+            TextAlign = ContentAlignment.MiddleRight, Font = CtlFont,
+            ForeColor = _text, BackColor = Color.Transparent,
+        };
     }
 
     private Panel BuildDisplay()

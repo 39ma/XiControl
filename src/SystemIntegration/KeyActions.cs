@@ -12,8 +12,22 @@ public static class KeyActions
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
-    /// <summary>Проекция экрана — эмулировать Win+P.</summary>
-    public static void Projection() => WinCombo(VK_P);
+    /// <summary>
+    /// Проекция экрана — окно выбора режима (как Win+P). Синтетический Win+P из
+    /// elevated-процесса Explorer иногда не подхватывает; нативный DisplaySwitch.exe
+    /// открывает то же окно напрямую и надёжнее. Откат — эмуляция Win+P.
+    /// </summary>
+    public static void Projection()
+    {
+        try
+        {
+            string ds = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System), "DisplaySwitch.exe");
+            if (File.Exists(ds)) { Process.Start(new ProcessStartInfo(ds) { UseShellExecute = false }); return; }
+        }
+        catch (Exception ex) { Log.Ex("KeyActions.Projection", ex); /* откатываемся на Win+P */ }
+        WinCombo(VK_P);
+    }
 
     /// <summary>Нейропомощник — открыть Windows Copilot (Win+C).</summary>
     public static void Copilot() => WinCombo(VK_C);

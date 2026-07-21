@@ -566,7 +566,14 @@ public sealed class TrayApp : IDisposable
                 SetAutoHz = ToggleAutoHz,
                 SetRefreshRates = SetRefreshRates,
                 SetOwlFeature = ToggleOwlFeature,
-                GetBatteryHealth = () => Safe(() => _mifs.GetBatteryHealth(), (int?)null),
+                GetBatteryReport = () =>
+                {
+                    var r = SystemIntegration.BatteryInfo.Read(); // штатные WMI-классы (циклы, ёмкость, износ)
+                    // здоровье WMI нет → падаем на SOH1 из прошивки (MIFS), это тоже оценка ёмкости
+                    if (r.HealthPercent is null && Safe(() => _mifs.GetBatteryHealth(), (int?)null) is int soh && soh > 0)
+                        r = r with { HealthPercent = soh };
+                    return r;
+                },
             };
             _settings = new SettingsForm(_cfg, act);
         }

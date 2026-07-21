@@ -24,7 +24,8 @@ public sealed class MonitorForm : Form
     private static readonly Color ChargeCol = Color.FromArgb(52, 199, 89);    // зелёный — заряд в батарею (вверх)
     private static readonly Color CpuCol = Color.FromArgb(90, 170, 255);
     private static readonly Color RamCol = Color.FromArgb(179, 157, 219);     // сиреневый (зелёный ушёл под заряд)
-    private static readonly Color TempCol = Color.FromArgb(255, 111, 97);     // коралловый — температура (тепло)
+    private static readonly Color TempCol = Color.FromArgb(255, 111, 97);     // коралловый — температура (норма)
+    private static readonly Color TempHotCol = Color.FromArgb(206, 32, 62);   // вишнёвый — горячая/крит-зона (сочно на OLED)
 
     // шрифты — из кэша ScaledFonts под текущий DPI: не разъезжаются с геометрией после смены разрешения
     private Font TitleFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
@@ -49,6 +50,11 @@ public sealed class MonitorForm : Form
     private int _adapterWatts; // ватты подключённого PD-БП (0 — нет/не PD); MIFS, driver-free
     private bool _hasTemp;     // на этой модели DPTF отдаёт температуры → резервируем строку/высоту
     private bool _tempOff;     // класс DPTF отсутствует — больше не опрашиваем
+    private float _critC;      // критический порог, °C (0 = неизвестен); из ACPI-термозоны, best-effort
+    private bool _critTried;   // порог уже пробовали прочитать (ACPI капризна — не долбим повторно)
+
+    // с этого порога температура «горячая» → вишнёвый цвет; от крита с запасом, иначе разумный дефолт
+    private float HotAt => _critC > 0 ? _critC - 15f : 88f;
 
     private Rectangle _close, _viewBtn, _expandBtn;
     private bool _closeHover, _viewHover, _expandHover;
@@ -269,10 +275,35 @@ public sealed class MonitorForm : Form
                 int c = Convert.ToInt32(t);
                 if (c > max && c < 130) max = c; // >130 °C — неинициализированный домен, отбрасываем
             }
-            if (any) _hasTemp = true; else _tempOff = true; // класс есть → резервируем строку; пусто → датчиков нет
+            if (any) { _hasTemp = true; ReadCriticalOnce(); } else _tempOff = true; // класс есть → строка + крит-порог
             return max > 0 ? max : float.NaN;
         }
         catch (Exception ex) { Log.Ex("Monitor.Temp", ex); _thermal = null; _tempOff = true; return float.NaN; }
+    }
+
+    /// <summary>
+    /// Критический порог температуры из ACPI-термозоны (WMI MSAcpi_ThermalZoneTemperature.CriticalTripPoint),
+    /// в десятых Кельвина → °C. Значение статичное — читаем один раз, best-effort (класс капризный); при
+    /// неудаче остаётся дефолтный HotAt. Отсюда «горячая зона» графика подсвечивается вишнёвым.
+    /// </summary>
+    private void ReadCriticalOnce()
+    {
+        if (_critTried) return;
+        _critTried = true;
+        try
+        {
+            using var s = new ManagementObjectSearcher(@"root\wmi",
+                "SELECT CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature");
+            foreach (ManagementObject o in s.Get())
+            {
+                object? v = o["CriticalTripPoint"];
+                o.Dispose();
+                if (v is null) continue;
+                float c = Convert.ToSingle(v) / 10f - 273.15f;
+                if (c is > 60f and < 120f) { _critC = c; break; } // правдоподобный крит-порог
+            }
+        }
+        catch (Exception ex) { Log.Ex("Monitor.Crit", ex); }
     }
 
     private static void Push(List<float> list, float v)
@@ -367,7 +398,8 @@ public sealed class MonitorForm : Form
         DrawRow(g, new Rectangle(Sc(16), top, Width - Sc(32), rowH),
             Loc.T("monitor.power"), powerText, pColor, _power, powerMax,
             sub: _adapterWatts > 0 ? Loc.T("monitor.adapter", _adapterWatts) : null, // рейтинг подключённого БП
-            scaleLabel: Loc.T("monitor.watts.scale", powerMax), colored: true);
+            scaleLabel: Loc.T("monitor.watts.scale", powerMax),
+            pick: v => v >= 0f ? ChargeCol : DischargeCol); // цвет по направлению тока
         DrawRow(g, new Rectangle(Sc(16), top + rowH, Width - Sc(32), rowH),
             "CPU", _cpu.Count > 0 && !float.IsNaN(_cpu[^1]) ? $"{_cpu[^1]:0}%" : "—", CpuCol, _cpu, 100f);
         DrawRow(g, new Rectangle(Sc(16), top + rowH * 2, Width - Sc(32), rowH),
@@ -377,9 +409,11 @@ public sealed class MonitorForm : Form
         if (_hasTemp)
         {
             float tc = _temp.Count > 0 ? _temp[^1] : float.NaN;
+            Color now = !float.IsNaN(tc) && tc >= HotAt ? TempHotCol : TempCol; // текущее значение — вишнёвым, если горячо
             DrawRow(g, new Rectangle(Sc(16), top + rowH * 3, Width - Sc(32), rowH),
-                Loc.T("monitor.temp"), float.IsNaN(tc) ? "—" : Loc.T("monitor.temp.c", (int)tc), TempCol, _temp, TempMax,
-                scaleLabel: Loc.T("monitor.temp.c", (int)TempMax));
+                Loc.T("monitor.temp"), float.IsNaN(tc) ? "—" : Loc.T("monitor.temp.c", (int)tc), now, _temp, TempMax,
+                scaleLabel: Loc.T("monitor.temp.c", (int)TempMax),
+                pick: v => v >= HotAt ? TempHotCol : TempCol); // горячая зона на графике — вишнёвая
         }
     }
 
@@ -424,7 +458,7 @@ public sealed class MonitorForm : Form
     }
 
     private void DrawRow(Graphics g, Rectangle r, string label, string value, Color color, List<float> data, float max,
-        string? sub = null, string? scaleLabel = null, bool colored = false)
+        string? sub = null, string? scaleLabel = null, Func<float, Color>? pick = null)
     {
         TextRenderer.DrawText(g, label, LabelFont,
             new Rectangle(r.X, r.Y + Sc(8), Sc(110), Sc(16)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
@@ -461,7 +495,7 @@ public sealed class MonitorForm : Form
         if (data.Count < 2 || max <= 0) return;
 
         float stepX = (float)plot.Width / (Capacity - 1);
-        if (colored) { DrawColored(g, plot, data, max, stepX); return; }
+        if (pick != null) { DrawColored(g, plot, data, max, stepX, pick); return; }
 
         var pts = new List<PointF>(data.Count);
         for (int i = 0; i < data.Count; i++)
@@ -474,9 +508,9 @@ public sealed class MonitorForm : Form
         DrawSegment(g, pts, plot, color);
     }
 
-    // График питания: во всю высоту от низа (по модулю), но каждый тик красится по направлению —
-    // зелёный (заряд, ток в батарею) или оранжевый (разряд).
-    private void DrawColored(Graphics g, Rectangle plot, List<float> data, float max, float stepX)
+    // Заливка от низа по модулю значения, но каждый тик красится своим цветом через pick():
+    // питание — по направлению тока (заряд/разряд), температура — норма/горячая зона.
+    private void DrawColored(Graphics g, Rectangle plot, List<float> data, float max, float stepX, Func<float, Color> pick)
     {
         float baseY = plot.Bottom - Sc(3), top = plot.Y + Sc(3), span = baseY - top;
         for (int i = 0; i < data.Count - 1; i++)
@@ -485,7 +519,7 @@ public sealed class MonitorForm : Form
             float x0 = plot.X + i * stepX, x1 = plot.X + (i + 1) * stepX;
             float y0 = baseY - span * Math.Clamp(MathF.Abs(data[i]) / max, 0f, 1f);
             float y1 = baseY - span * Math.Clamp(MathF.Abs(data[i + 1]) / max, 0f, 1f);
-            Color c = data[i + 1] >= 0f ? ChargeCol : DischargeCol; // цвет по направлению текущего тика
+            Color c = pick(data[i + 1]); // цвет по значению текущего тика
             using (var fill = new SolidBrush(Color.FromArgb(45, c)))
                 g.FillPolygon(fill, new[] { new PointF(x0, y0), new PointF(x1, y1), new PointF(x1, baseY), new PointF(x0, baseY) });
             using var pen = new Pen(c, 1.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };

@@ -27,7 +27,7 @@ public sealed class SettingsActions
     public Action<bool> SetAutoHz = _ => { };
     public Action<int, int> SetRefreshRates = (_, _) => { };       // ac, batt
     public Action<bool> SetOwlFeature = _ => { };
-    public Func<int?> GetBatteryHealth = () => null;               // SOH1 %, null = прошивка не отдаёт
+    public Func<SystemIntegration.BatteryReport> GetBatteryReport = () => default; // здоровье батареи (WMI + SOH1)
 }
 
 /// <summary>
@@ -348,11 +348,19 @@ public sealed class SettingsForm : Form
                 Math.Max(0, Array.IndexOf(thresholds, _cfg.WeakChargerWatts)),
                 i => { _cfg.WeakChargerWatts = thresholds[i]; _cfg.Save(); }, Sc(120)));
 
-        // здоровье батареи (SOH1) — только чтение; прячем, если прошивка не отдаёт значение
-        if (_act.GetBatteryHealth() is int soh && soh > 0)
+        // состояние батареи — только чтение (WMI-классы ACPI + SOH1); каждую строку прячем,
+        // если прошивка не отдаёт значение (на части моделей поля пустые)
+        var bat = _act.GetBatteryReport();
+        if (bat.HealthPercent is not null || bat.Cycles is not null || bat.DesignWh > 0)
         {
             AddGroup(p, "settings.battery.state");
-            AddRow(p, "settings.battery.health", "settings.battery.health.desc", ValueLabel($"{soh}%"));
+            if (bat.HealthPercent is int hp)
+                AddRow(p, "settings.battery.health", "settings.battery.health.desc", ValueLabel($"{hp}%"));
+            if (bat.Cycles is int cy)
+                AddRow(p, "settings.battery.cycles", "settings.battery.cycles.desc", ValueLabel($"{cy}"));
+            if (bat.DesignWh > 0 && bat.FullWh > 0)
+                AddRow(p, "settings.battery.capacity", "settings.battery.capacity.desc",
+                    ValueLabel(Loc.T("settings.battery.capacity.val", bat.FullWh, bat.DesignWh)));
         }
         return p;
     }

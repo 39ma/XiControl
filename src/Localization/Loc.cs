@@ -55,7 +55,12 @@ public static class Loc
         ["settings.charger.weak.desc"]= ["Если подключён адаптер мощностью ниже порога — OSD с предупреждением о медленном заряде.", "If a connected adapter is below this wattage — an OSD warns about slow charging.", "若适配器功率低于阈值，则弹出慢充提醒。"],
         ["settings.battery.state"]= ["Состояние", "Condition", "状态"],
         ["settings.battery.health"]= ["Здоровье батареи", "Battery health", "电池健康度"],
-        ["settings.battery.health.desc"]= ["Оценка текущей ёмкости относительно новой батареи.", "Estimated current capacity relative to a new battery.", "相对于新电池的当前容量估算。"],
+        ["settings.battery.health.desc"]= ["Текущая максимальная ёмкость относительно проектной.", "Current maximum capacity relative to the design capacity.", "当前最大容量相对于设计容量。"],
+        ["settings.battery.cycles"]= ["Циклы заряда", "Charge cycles", "充电循环"],
+        ["settings.battery.cycles.desc"]= ["Сколько полных циклов заряда прошла батарея.", "Full charge cycles the battery has been through.", "电池已完成的完整充电循环次数。"],
+        ["settings.battery.capacity"]= ["Ёмкость", "Capacity", "容量"],
+        ["settings.battery.capacity.desc"]= ["Текущая максимальная и проектная ёмкость.", "Current maximum and design capacity.", "当前最大容量与设计容量。"],
+        ["settings.battery.capacity.val"]= ["{0:0.0} / {1:0.0} Вт·ч", "{0:0.0} / {1:0.0} Wh", "{0:0.0} / {1:0.0} 瓦时"],
 
         ["settings.display.sub"]  = ["Частота обновления в зависимости от питания.", "Refresh rate depending on the power source.", "根据电源自动切换刷新率。"],
         ["settings.hz.auto"]      = ["Авто-частота по питанию", "Auto refresh rate by power", "按电源自动刷新率"],

@@ -156,7 +156,7 @@ public sealed class QuickPanelForm : Form
         // растягиваются сами ячейки (иконки остаются прежними, растут только границы),
         // иначе сжимался нижний ряд и пилюли 80/100 становились мелкими.
         // cellW расширен (~+10%) с добавлением ячейки тачскрина — чтобы нижний ряд
-        // [В дорогу][80][100][тачпад][тачскрин][герцовка][сова] не теснился.
+        // [В дорогу][80][100][тачскрин][тачпад][герцовка][сова] не теснился.
         int content = cellW * Modes.Length + gap * (Modes.Length - 1);
         int width = content + p * 2;
 
@@ -174,7 +174,7 @@ public sealed class QuickPanelForm : Form
             _modeRects[i] = new Rectangle(x, modeY, w, cellH);
         }
 
-        // ряд заряда: [В дорогу] [80%] [100%] … [тачпад] [тачскрин] [авто-герцовка] [Не спать]
+        // ряд заряда: [В дорогу] [80%] [100%] … [тачскрин] [тачпад] [авто-герцовка] [Не спать]
         int owlW = _cfg.OwlMode ? Sc(56) : 0;
         int hzW = Sc(56);
         int tpW = _tpAvail ? Sc(56) : 0;
@@ -186,11 +186,11 @@ public sealed class QuickPanelForm : Form
         _travelCell = new Rectangle(p, pillsY, travelW, pillsH);
         _care80 = new Rectangle(_travelCell.Right + gap, pillsY, half, pillsH);
         _care100 = new Rectangle(_care80.Right + gap, pillsY, half, pillsH);
-        _tpCell = tpW > 0 ? new Rectangle(_care100.Right + gap, pillsY, tpW, pillsH) : Rectangle.Empty;
-        int afterTp = tpW > 0 ? _tpCell.Right : _care100.Right;
-        _tsCell = tsW > 0 ? new Rectangle(afterTp + gap, pillsY, tsW, pillsH) : Rectangle.Empty;
-        int afterTs = tsW > 0 ? _tsCell.Right : afterTp;
-        _hzCell = new Rectangle(afterTs + gap, pillsY, hzW, pillsH);
+        _tsCell = tsW > 0 ? new Rectangle(_care100.Right + gap, pillsY, tsW, pillsH) : Rectangle.Empty;
+        int afterTs = tsW > 0 ? _tsCell.Right : _care100.Right;
+        _tpCell = tpW > 0 ? new Rectangle(afterTs + gap, pillsY, tpW, pillsH) : Rectangle.Empty;
+        int afterTp = tpW > 0 ? _tpCell.Right : afterTs;
+        _hzCell = new Rectangle(afterTp + gap, pillsY, hzW, pillsH);
         _awake = _cfg.OwlMode ? new Rectangle(_hzCell.Right + gap, pillsY, owlW, pillsH) : Rectangle.Empty;
         _close = new Rectangle(width - p - Sc(22), p - Sc(2), Sc(22), Sc(22));
         _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));

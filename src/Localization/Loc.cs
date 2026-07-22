@@ -174,6 +174,7 @@ public static class Loc
         ["osd.onbattery"]        = ["Работа от батареи", "On battery", "电池供电"],
         ["osd.charger.watts"]    = ["{0} Вт", "{0} W", "{0} 瓦"],
         ["osd.charger.weak"]     = ["Слабый зарядник — заряд медленный", "Weak charger — slow charging", "充电器功率低，充电较慢"],
+        ["osd.charger.nopd"]     = ["PD не поддерживается", "PD not supported", "不支持 PD"],
         ["osd.level"]            = ["Заряд {0}%", "Battery {0}%", "电量 {0}%"],
         ["osd.care.on"]          = ["Беречь батарею", "Battery care", "电池保护"],
         ["osd.care.off"]         = ["Заряд до 100%", "Charge to 100%", "充电至 100%"],

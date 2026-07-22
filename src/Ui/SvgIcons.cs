@@ -20,7 +20,8 @@ public static class SvgIcons
     public const string Travel = "travel";
     public const string Touchpad = "touchpad";
     public const string TouchpadOff = "touchpad-off";
-    public const string ChargerWeak = "charger-weak";           // слабый зарядник — предупреждение о медленном заряде
+    public const string BadgeSlow = "badge-slow";               // оверлей поверх заряда: медленный зарядник (красный «!»)
+    public const string BadgeNoPd = "badge-nopd";               // оверлей поверх заряда: PD не согласован (серый «?»)
     public const string Touchscreen = "touchscreen";            // экран в рамке + тап-жест — сенсорный экран вкл
     public const string TouchscreenOff = "touchscreen-off";     // то же серым — сенсорный экран выкл
     public const string TravelOff = "travel-off";    // чемодан без молнии — «В дорогу» выключен / корпус для анимации

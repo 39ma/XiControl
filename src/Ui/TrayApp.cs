@@ -439,30 +439,37 @@ public sealed class TrayApp : IDisposable
 
         if (online)
         {
-            // мощность подключённого адаптера (PD): дописываем в OSD и, если ниже порога,
-            // показываем предупреждение о слабом зарядке. 0 = не PD/не сообщил — не трогаем.
+            // мощность адаптера задаёт бейдж-оверлей качества зарядника и подпись; сам заряд
+            // (лимит 80/100 или «В дорогу») — это база иконки. Два независимых измерения.
+            // ADPW=0 → не-PD БП, мощность неизвестна (серый «?»); >0 и ниже порога → медленный («!»).
             int watts = Safe(() => _mifs.GetAdapterWatts(), 0);
-            if (_cfg.ChargerWattsOsd && watts > 0)
+            var badge = ChargeBadge.None;
+            string? note = null;
+            if (_cfg.ChargerWattsOsd)
             {
-                string w = Loc.T("osd.charger.watts", watts);
-                sub = sub is null ? w : $"{sub} • {w}";
+                if (watts == 0) { badge = ChargeBadge.NoPd; note = Loc.T("osd.charger.nopd"); }
+                else
+                {
+                    note = Loc.T("osd.charger.watts", watts);
+                    if (_cfg.WeakChargerWatts > 0 && watts < _cfg.WeakChargerWatts) badge = ChargeBadge.Slow;
+                }
             }
-            bool weak = _cfg.WeakChargerWatts > 0 && watts > 0 && watts < _cfg.WeakChargerWatts;
 
-            if (weak)
-                _osd.Flash(OsdKind.ChargingWeak, Loc.T("osd.charger.weak"), sub);
-            else if (_cfg.TravelMode)
-                _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub")); // «Режим В дорогу» / «Заряжаем до 100%»
+            if (_cfg.TravelMode)
+                _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Append(Loc.T("osd.travel.sub"), note), badge);
             else if (_cfg.ChargeCare)
-                _osd.Flash(OsdKind.ChargingLimited, Loc.T("osd.charging.limited", Mifs.ChargeThresholdPercent), sub);
+                _osd.Flash(OsdKind.ChargingLimited, Loc.T("osd.charging.limited", Mifs.ChargeThresholdPercent), Append(sub, note), badge);
             else
-                _osd.Flash(OsdKind.Charging, Loc.T("osd.charging"), sub);
+                _osd.Flash(OsdKind.Charging, Loc.T("osd.charging"), Append(sub, note), badge);
         }
         else
         {
             _osd.Flash(OsdKind.OnBattery, Loc.T("osd.onbattery"), sub);
         }
     }
+
+    // Склейка строк подписи OSD через « • » (любая часть может быть null).
+    private static string? Append(string? a, string? b) => a is null ? b : b is null ? a : $"{a} • {b}";
 
     private void ShowMenu()
     {

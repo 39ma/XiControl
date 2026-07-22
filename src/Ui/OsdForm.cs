@@ -2,7 +2,10 @@ using System.Drawing.Drawing2D;
 
 namespace XiControl.Ui;
 
-public enum OsdKind { Charging, ChargingLimited, ChargingWeak, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff, TouchpadOn, TouchpadOff, TouchscreenOn, TouchscreenOff }
+public enum OsdKind { Charging, ChargingLimited, OnBattery, Eco, Quiet, Auto, Turbo, Full, CareOn, CareOff, MicOn, MicOff, Backlight, BacklightMid, BacklightOff, BacklightAuto, FnLockOn, FnLockOff, RefreshRate, RefreshRateOff, Travel, TravelOff, TouchpadOn, TouchpadOff, TouchscreenOn, TouchscreenOff }
+
+/// <summary>Значок-оверлей качества зарядника поверх иконки заряда (независимо от лимита 80/100).</summary>
+public enum ChargeBadge { None, Slow, NoPd }
 
 /// <summary>
 /// OSD-оверлей: тёмная скруглённая карточка по центру с иконкой и текстом,
@@ -31,6 +34,7 @@ public sealed class OsdForm : Form
     private OsdKind _kind;
     private string _title = "";
     private string? _sub;
+    private ChargeBadge _badge; // оверлей поверх иконки заряда (медленно/нет PD), None — без него
 
     // все размеры — через Sc(): на HiDPI шрифты масштабируются системой,
     // и иконка с отступами должны расти вместе с ними
@@ -112,9 +116,9 @@ public sealed class OsdForm : Form
     }
 
     /// <summary>Показать OSD (перезапускает таймер показа).</summary>
-    public void Flash(OsdKind kind, string title, string? subtitle = null)
+    public void Flash(OsdKind kind, string title, string? subtitle = null, ChargeBadge badge = ChargeBadge.None)
     {
-        _kind = kind; _title = title; _sub = subtitle;
+        _kind = kind; _title = title; _sub = subtitle; _badge = badge;
 
         var (w, h, _, _) = Measure();
         Size = new Size(w, h);
@@ -166,6 +170,16 @@ public sealed class OsdForm : Form
 
     private void DrawIcon(Graphics g, OsdKind kind, RectangleF r)
     {
+        DrawBase(g, kind, r);
+        // оверлей качества зарядника: база несёт лимит 80/100 (Charging/ChargingLimited/Travel),
+        // бейдж — только мощность. Бейджи нарисованы в полном кадре 128×128 уже на своём месте
+        // (угол), поэтому накладываем 1:1 в тот же прямоугольник, что и базу — сходится точно.
+        if (_badge != ChargeBadge.None)
+            SvgIcons.Draw(g, _badge == ChargeBadge.Slow ? SvgIcons.BadgeSlow : SvgIcons.BadgeNoPd, r);
+    }
+
+    private void DrawBase(Graphics g, OsdKind kind, RectangleF r)
+    {
         switch (kind)
         {
             case OsdKind.Auto:     SvgIcons.DrawGauge(g, r, NeedleAngle()); return;
@@ -202,7 +216,6 @@ public sealed class OsdForm : Form
             OsdKind.TravelOff       => SvgIcons.TravelOff,
             OsdKind.TouchpadOn      => SvgIcons.Touchpad,
             OsdKind.TouchpadOff     => SvgIcons.TouchpadOff,
-            OsdKind.ChargingWeak    => SvgIcons.ChargerWeak,
             OsdKind.TouchscreenOn   => SvgIcons.Touchscreen,
             OsdKind.TouchscreenOff  => SvgIcons.TouchscreenOff,
             _ => SvgIcons.Settings,

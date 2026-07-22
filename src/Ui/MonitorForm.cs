@@ -45,6 +45,7 @@ public sealed class MonitorForm : Form
 
     private ManagementObjectSearcher? _battery;
     private ManagementObjectSearcher? _thermal;
+    private readonly SystemIntegration.PowerDraw _powerDraw = new(); // живая мощность через Battery IOCTL
     private long _prevIdle, _prevKernel, _prevUser;
     private float _ramUsedGb, _ramTotalGb;
     private int _adapterWatts; // ватты подключённого PD-БП (0 — нет/не PD); MIFS, driver-free
@@ -345,6 +346,14 @@ public sealed class MonitorForm : Form
     /// <summary>Вт с датчика батареи со знаком: заряд в батарею +, разряд −, от сети без заряда — NaN.</summary>
     private float SamplePowerWatts()
     {
+        // Battery IOCTL — живое значение (не «залипает» без сторонних поллеров вроде HWiNFO);
+        // если Battery API недоступен, мягко откатываемся на WMI.
+        if (_powerDraw.TryReadWatts(out float w)) return w;
+        return SamplePowerWattsWmi();
+    }
+
+    private float SamplePowerWattsWmi()
+    {
         try
         {
             _battery ??= new ManagementObjectSearcher(@"root\wmi",
@@ -547,6 +556,7 @@ public sealed class MonitorForm : Form
             _tick.Dispose();
             _battery?.Dispose();
             _thermal?.Dispose();
+            _powerDraw.Dispose();
         }
         base.Dispose(disposing);
     }

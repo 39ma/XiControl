@@ -138,6 +138,8 @@ WMI-событий). `Program.cs`: single-instance mutex → `MifsClient` → `T
 
 - SVG рисует **сам пользователь**; Claude только интегрирует и правит технически. `assets/svg/osd/` —
   цветные 128×128, `assets/svg/tray/` — монохром 24×24 (`currentColor`, перекрашивается под тему).
+- **Фирменная палитра — [docs/10-colors.md](docs/10-colors.md)** (Material-набор): бери цвета оттуда,
+  не вводи произвольные оттенки. Пары вкл/выкл: «выкл» = синие → Blue Grey, ripple убрать, рука `#FFCC80`.
 - SVG встраиваются в exe как EmbeddedResource с `LogicalName svg.<имя>.svg` — **имена файлов должны
   быть уникальны между osd/ и tray/**, дубликат роняет сборку.
 - **Svg.NET (пакет Svg 3.4.7) молча игнорирует `<mask>` и `<clipPath>`** — элемент рисуется без

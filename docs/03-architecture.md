@@ -2,6 +2,10 @@
 
 Цель: **максимально просто.** Трей + всплывающее меню. Служба — только если без неё реально нельзя.
 
+> 📌 **Документ этапа планирования / запись решения.** Главный вопрос — «нужна ли фоновая служба» —
+> закрыт: **не нужна** (см. ниже). Актуальная карта модулей и правил — в [CLAUDE.md](../CLAUDE.md)
+> «Архитектура», статус фич — в [ROADMAP.md](../ROADMAP.md). Ниже — как решали и как в итоге вышло.
+
 ## ✅ Стек зафиксирован
 
 - **Язык/платформа:** C# / .NET 8
@@ -90,22 +94,23 @@
 
 > Native AOT пока **не** закладываем: `System.Management` использует COM-interop/reflection и с AOT капризен. Self-contained single-file — надёжный вариант.
 
-### Примерная раскладка проекта (C#)
+### Раскладка проекта — как вышло
+
+Планировали компактно; разрослось (панель, «Монитор», окно настроек, гарды, тачпад/экран,
+здоровье батареи), но структура та же: WMI-обёртка + UI + системная интеграция, **без службы**.
+Полное описание модулей — в CLAUDE.md «Архитектура»; коротко:
+
 ```
-xi_control/                 (решение позже переедет из docs-каталога в корень своего репо)
- ├─ XiControl.csproj
- ├─ Program.cs              — точка входа, single-instance mutex, GDI init
- ├─ Wmi/
- │   ├─ MifsClient.cs       — обёртка MiInterface: Get/Set(cmd,arg,arg2) → byte[]
- │   ├─ MifsCommands.cs     — enum кодов (0x08, 0x10, …), режимы, парсинг ответов
- │   └─ MifsEventWatcher.cs — подписка HID_EVENT20 (v0.3)
- ├─ Ui/
- │   ├─ TrayIcon.cs         — NotifyIcon + меню
- │   ├─ OsdForm.cs          — всплывашка
- │   └─ SettingsForm.cs     — опц. окно настроек
- ├─ Power/ChargeGuard.cs    — re-arm заряда на resume/AC
- ├─ System/AutoStart.cs     — задача планировщика
- └─ Config/AppConfig.cs     — настройки + локализация RU/EN/ZH
+xi_control/                 (переехал из docs-каталога в корень своего репо — как и планировали)
+ ├─ Program.cs              — вход, single-instance mutex, MifsClient → TrayApp
+ ├─ Wmi/                    — Mifs.cs (константы протокола), MifsClient, MifsEventWatcher
+ ├─ Ui/                     — TrayApp (центральный узел), OsdForm, QuickPanelForm, MonitorForm,
+ │                            SettingsForm, ScaledFonts, SvgIcons, Draw, TrayIcons, DarkMenu, ToggleSwitch
+ ├─ SystemIntegration/      — ChargeGuard, RefreshRate(+Guard), PowerProfileGuard, Brightness,
+ │                            TouchpadControl/TouchscreenControl (общий HidNodeToggle), AwakeMode,
+ │                            MicControl, KeyActions, AutoStart, Sound, BatteryInfo, PowerDraw
+ ├─ Config/AppConfig.cs     — config.json + миграции
+ └─ Localization/Loc.cs     — RU/EN/ZH
 ```
 
 ---

@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 using System.Management;
 using System.Runtime.InteropServices;
 using XiControl.Config;
@@ -14,16 +14,13 @@ namespace XiControl.Ui;
 /// Три вида — полный (графики), мини (строка Power/CPU/RAM), только ватты;
 /// переключаются кнопкой «вид» или двойным кликом по виджету, выбор запоминается.
 /// </summary>
-public sealed class MonitorForm : Form
+public sealed class MonitorForm : FlyoutForm
 {
-    private static readonly Color Card = Color.FromArgb(28, 28, 30);
-    private static readonly Color Border = Color.FromArgb(70, 70, 74);
-    private static readonly Color TextCol = Color.FromArgb(238, 238, 238);
-    private static readonly Color DimCol = Color.FromArgb(150, 150, 155);
-    private static readonly Color DischargeCol = Color.FromArgb(255, 149, 0); // оранжевый — разряд батареи (вниз)
-    private static readonly Color ChargeCol = Color.FromArgb(52, 199, 89);    // зелёный — заряд в батарею (вверх)
-    private static readonly Color CpuCol = Color.FromArgb(90, 170, 255);
-    private static readonly Color RamCol = Color.FromArgb(179, 157, 219);     // сиреневый (зелёный ушёл под заряд)
+    // семантические алиасы общей палитры флайаутов + свои цвета графиков
+    private static readonly Color DischargeCol = FlyoutPalette.Orange;     // разряд батареи (вниз)
+    private static readonly Color ChargeCol = FlyoutPalette.Green;         // заряд в батарею (вверх)
+    private static readonly Color CpuCol = FlyoutPalette.Blue;
+    private static readonly Color RamCol = Color.FromArgb(179, 157, 219);  // сиреневый (зелёный ушёл под заряд)
     private static readonly Color TempCol = Color.FromArgb(255, 111, 97);     // коралловый — температура (норма)
     private static readonly Color TempHotCol = Color.FromArgb(206, 32, 62);   // вишнёвый — горячая/крит-зона (сочно на OLED)
 
@@ -78,30 +75,10 @@ public sealed class MonitorForm : Form
             "power" => ViewKind.Power,
             _ => ViewKind.Full,
         };
-        FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        TopMost = true;
-        DoubleBuffered = true;
-        KeyPreview = true;
-        BackColor = Card;
-
+        // borderless tool-window поверх всех окон — база FlyoutForm
         _tick.Tick += (_, _) => { Sample(); Invalidate(); };
         _ = Handle;
     }
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            const int WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8;
-            var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
-            return cp;
-        }
-    }
-
-    private int Sc(float v) => (int)Math.Round(v * DeviceDpi / 96f);
 
     public void Popup()
     {
@@ -158,10 +135,7 @@ public sealed class MonitorForm : Form
                 break;
         }
         Size = new Size(w, h);
-        var old = Region;
-        using (var p = Draw.Rounded(new Rectangle(0, 0, w, h), _corner))
-            Region = new Region(p);
-        old?.Dispose();
+        SetRoundedRegion(_corner);
     }
 
     // Полный → мини → только ватты → снова полный (кнопка «вид» / двойной клик)
@@ -209,11 +183,6 @@ public sealed class MonitorForm : Form
             var p = PointToClient(new Point(unchecked((short)(lp & 0xFFFF)), unchecked((short)((lp >> 16) & 0xFFFF))));
             if (!_close.Contains(p) && !_viewBtn.Contains(p) && !_expandBtn.Contains(p)) m.Result = HTCAPTION;
         }
-    }
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-        if (e.KeyCode == Keys.Escape) Hide();
     }
     protected override void OnMouseClick(MouseEventArgs e)
     {
@@ -377,22 +346,16 @@ public sealed class MonitorForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-        g.Clear(Card);
-        using (var pen = new Pen(Border))
-        using (var path = Draw.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), _corner))
-            g.DrawPath(pen, path);
+        PaintChrome(g, _corner);
 
         float pw = _power.Count > 0 ? _power[^1] : float.NaN;
-        Color pColor = float.IsNaN(pw) ? DimCol : (pw >= 0 ? ChargeCol : DischargeCol);
+        Color pColor = float.IsNaN(pw) ? FlyoutPalette.Dim : (pw >= 0 ? ChargeCol : DischargeCol);
 
         if (_view == ViewKind.Power) { PaintPower(g, pw, pColor); return; }
         if (_view == ViewKind.Mini) { PaintMini(g, pw, pColor); return; }
 
         TextRenderer.DrawText(g, Loc.T("monitor.title"), TitleFont,
-            new Rectangle(Sc(16), Sc(12), Width, Sc(24)), TextCol, TextFormatFlags.Left | TextFormatFlags.Top);
+            new Rectangle(Sc(16), Sc(12), Width, Sc(24)), FlyoutPalette.Text, TextFormatFlags.Left | TextFormatFlags.Top);
 
         // кнопка «вид» и крестик — общие с панелью
         Draw.ViewButton(g, _viewBtn, _viewHover);
@@ -443,7 +406,7 @@ public sealed class MonitorForm : Form
     private int MiniCell(Graphics g, int x, int w, string label, string value, Color color)
     {
         TextRenderer.DrawText(g, label, LabelFont,
-            new Rectangle(x, Sc(8), w, Sc(16)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
+            new Rectangle(x, Sc(8), w, Sc(16)), FlyoutPalette.Dim, TextFormatFlags.Left | TextFormatFlags.Top);
         TextRenderer.DrawText(g, value, ValueFont,
             new Rectangle(x, Sc(24), w, Sc(26)), color, TextFormatFlags.Left | TextFormatFlags.Top);
         return x + w + Sc(8);
@@ -470,12 +433,12 @@ public sealed class MonitorForm : Form
         string? sub = null, string? scaleLabel = null, Func<float, Color>? pick = null)
     {
         TextRenderer.DrawText(g, label, LabelFont,
-            new Rectangle(r.X, r.Y + Sc(8), Sc(110), Sc(16)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
+            new Rectangle(r.X, r.Y + Sc(8), Sc(110), Sc(16)), FlyoutPalette.Dim, TextFormatFlags.Left | TextFormatFlags.Top);
         TextRenderer.DrawText(g, value, ValueFont,
             new Rectangle(r.X, r.Y + Sc(26), Sc(110), Sc(26)), color, TextFormatFlags.Left | TextFormatFlags.Top);
         if (sub != null)
             TextRenderer.DrawText(g, sub, LabelFont,
-                new Rectangle(r.X, r.Y + Sc(54), Sc(112), Sc(16)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
+                new Rectangle(r.X, r.Y + Sc(54), Sc(112), Sc(16)), FlyoutPalette.Dim, TextFormatFlags.Left | TextFormatFlags.Top);
 
         var plot = new Rectangle(r.X + Sc(116), r.Y + Sc(8), r.Width - Sc(116), r.Height - Sc(20));
         using (var bg = new SolidBrush(Color.FromArgb(38, 38, 41)))
@@ -485,7 +448,7 @@ public sealed class MonitorForm : Form
         // подпись шкалы (верх графика = это значение; линии сетки — пятые доли)
         if (scaleLabel != null)
             TextRenderer.DrawText(g, scaleLabel, LabelFont,
-                new Rectangle(plot.X, plot.Y + Sc(2), plot.Width - Sc(6), Sc(14)), DimCol,
+                new Rectangle(plot.X, plot.Y + Sc(2), plot.Width - Sc(6), Sc(14)), FlyoutPalette.Dim,
                 TextFormatFlags.Right | TextFormatFlags.Top);
 
         // сетка: горизонтали через 20% шкалы, вертикали каждые 30 секунд

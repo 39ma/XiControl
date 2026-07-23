@@ -1,10 +1,21 @@
-using XiControl.Wmi;
+﻿using XiControl.Wmi;
 
 namespace XiControl.Ui;
 
-/// <summary>UI-маппинг режима производительности: ключ локализации и вид OSD.</summary>
+/// <summary>UI-маппинг режима производительности: ключ локализации, вид OSD и акцентный цвет.</summary>
 internal static class ModeUi
 {
+    /// <summary>Акцент ячейки режима в панели (палитра docs/10-colors.md).</summary>
+    public static Color Accent(PerfMode m) => m switch
+    {
+        PerfMode.Eco => Color.FromArgb(125, 160, 185), // сизый
+        PerfMode.Quiet => FlyoutPalette.Green,
+        PerfMode.Auto => FlyoutPalette.Blue,
+        PerfMode.Turbo => FlyoutPalette.Orange,
+        PerfMode.FullSpeed => FlyoutPalette.Red,
+        _ => FlyoutPalette.Blue,
+    };
+
     public static string? Key(PerfMode m) => m switch
     {
         PerfMode.Eco => "mode.eco",

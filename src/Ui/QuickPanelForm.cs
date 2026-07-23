@@ -1,5 +1,4 @@
-using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using XiControl.Config;
 using XiControl.Localization;
 using XiControl.SystemIntegration;
@@ -11,26 +10,10 @@ namespace XiControl.Ui;
 /// Интерактивная панель по Mi-кнопке: переключатель режимов (иконки),
 /// сегмент заряда 80/100 и крестик. Закрывается по X, Esc и клику вне окна.
 /// </summary>
-public sealed class QuickPanelForm : Form
+public sealed class QuickPanelForm : FlyoutForm
 {
-    private static readonly Color Card = Color.FromArgb(28, 28, 30);
-    private static readonly Color Border = Color.FromArgb(70, 70, 74);
+    // палитра общая (FlyoutPalette), свой только фон ячейки — чуть светлее карточки
     private static readonly Color Cell = Color.FromArgb(42, 42, 45);
-    private static readonly Color TextCol = Color.FromArgb(238, 238, 238);
-    private static readonly Color DimCol = Color.FromArgb(150, 150, 155);
-    private static readonly Color Green = Color.FromArgb(52, 199, 89);
-    private static readonly Color Blue = Color.FromArgb(90, 170, 255);
-    private static readonly Color Orange = Color.FromArgb(255, 149, 0);
-
-    private static readonly (PerfMode mode, string key, Color accent)[] Modes =
-    {
-        (PerfMode.Eco,       "mode.eco",   Color.FromArgb(125, 160, 185)), // сизый
-        (PerfMode.Quiet,     "mode.quiet", Green),
-        (PerfMode.Auto,      "mode.auto",  Blue),
-        (PerfMode.Turbo,     "mode.turbo", Orange),
-        (PerfMode.FullSpeed, "mode.full",  Color.FromArgb(255, 82, 82)),  // красный
-
-    };
 
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
@@ -84,30 +67,9 @@ public sealed class QuickPanelForm : Form
             Invalidate();
         };
 
-        FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        TopMost = true;
-        DoubleBuffered = true;
-        KeyPreview = true;
-        BackColor = Card;
-
+        // borderless tool-window поверх всех окон — база FlyoutForm
         _ = Handle; // форсируем хэндл (нужен DeviceDpi и маршалинг)
     }
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            const int WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8;
-            var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
-            return cp;
-        }
-    }
-
-    private float S => DeviceDpi / 96f;
-    private int Sc(float v) => (int)Math.Round(v * S);
 
     public void Toggle()
     {
@@ -132,9 +94,10 @@ public sealed class QuickPanelForm : Form
     /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
     public void ReloadModes()
     {
-        _modes = Modes.Where(t =>
-            (_cfg.EcoMode || t.mode != PerfMode.Eco) &&
-            (_cfg.FullSpeedMode || t.mode != PerfMode.FullSpeed)).ToArray();
+        _modes = AppController.AllModes
+            .Where(m => (_cfg.EcoMode || m != PerfMode.Eco) && (_cfg.FullSpeedMode || m != PerfMode.FullSpeed))
+            .Select(m => (m, ModeUi.Key(m) ?? "mode.auto", ModeUi.Accent(m)))
+            .ToArray();
         _modeRects = new Rectangle[_modes.Length];
         _hoverT = new float[_modes.Length];
         _hover = -1;
@@ -157,7 +120,8 @@ public sealed class QuickPanelForm : Form
         // иначе сжимался нижний ряд и пилюли 80/100 становились мелкими.
         // cellW расширен (~+10%) с добавлением ячейки тачскрина — чтобы нижний ряд
         // [В дорогу][80][100][тачскрин][тачпад][герцовка][сова] не теснился.
-        int content = cellW * Modes.Length + gap * (Modes.Length - 1);
+        int total = AppController.AllModes.Length;
+        int content = cellW * total + gap * (total - 1);
         int width = content + p * 2;
 
         int modeY = p + header + Sc(4);
@@ -196,10 +160,7 @@ public sealed class QuickPanelForm : Form
         _monBtn = new Rectangle(_close.X - Sc(28), _close.Y, Sc(22), Sc(22));
 
         Size = new Size(width, height);
-        var old = Region;
-        using var rgn = Draw.Rounded(new Rectangle(0, 0, width, height), Sc(18));
-        Region = new Region(rgn);
-        old?.Dispose(); // присваивание Region не освобождает прежний GDI-хэндл
+        SetRoundedRegion(Sc(18));
     }
 
     // Esc как системный хоткей на время показа: панель открывается из события WMI-клавиши,
@@ -282,13 +243,8 @@ public sealed class QuickPanelForm : Form
         base.WndProc(ref m);
     }
 
-    // ---- закрытие ----
+    // ---- закрытие ---- (Esc — в базе FlyoutForm)
     protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); Hide(); }
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-        if (e.KeyCode == Keys.Escape) Hide();
-    }
 
     // ---- ввод ----
     protected override void OnMouseMove(MouseEventArgs e)
@@ -407,16 +363,10 @@ public sealed class QuickPanelForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-        g.Clear(Card);
-        using (var pen = new Pen(Border))
-        using (var path = Draw.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Sc(18)))
-            g.DrawPath(pen, path);
+        PaintChrome(g, Sc(18));
 
         TextRenderer.DrawText(g, Loc.T("panel.title"), TitleFont,
-            new Rectangle(Sc(16), Sc(12), Width, Sc(22)), TextCol, TextFormatFlags.Left | TextFormatFlags.Top);
+            new Rectangle(Sc(16), Sc(12), Width, Sc(22)), FlyoutPalette.Text, TextFormatFlags.Left | TextFormatFlags.Top);
 
         // крестик и кнопка «Монитор» слева от него
         Draw.CloseButton(g, _close, _hover == 12);
@@ -446,18 +396,18 @@ public sealed class QuickPanelForm : Form
 
             TextRenderer.DrawText(g, Loc.T(_modes[i].key), LabelFont,
                 new Rectangle(r.X + Sc(3), r.Bottom - Sc(38), r.Width - Sc(6), Sc(36)),
-                active ? TextCol : DimCol,
+                active ? FlyoutPalette.Text : FlyoutPalette.Dim,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         }
 
         // заряд (заголовок слева) + «Не спать» (заголовок справа, над совой)
         TextRenderer.DrawText(g, Loc.T("panel.charge"), CapFont,
-            new Rectangle(Sc(16), _travelCell.Y - Sc(20), Width, Sc(18)), DimCol, TextFormatFlags.Left | TextFormatFlags.Top);
+            new Rectangle(Sc(16), _travelCell.Y - Sc(20), Width, Sc(18)), FlyoutPalette.Dim, TextFormatFlags.Left | TextFormatFlags.Top);
 
         // «В дорогу»: активна = TravelMode; неактивна (серая), когда базово стоит постоянный 100%.
         // Пилюли 80/100 показывают базовую настройку (ChargeCare), «В дорогу» — временный оверрайд.
         bool travelEnabled = _cfg.ChargeCare;
-        DrawCell(g, _travelCell, _cfg.TravelMode, travelEnabled && _hover == 16, Orange, Sc(10));
+        DrawCell(g, _travelCell, _cfg.TravelMode, travelEnabled && _hover == 16, FlyoutPalette.Orange, Sc(10));
         float trIcon = Math.Min(_travelCell.Width, _travelCell.Height) - Sc(8);
         float trOp = !travelEnabled ? 0.28f : (_cfg.TravelMode || _hover == 16 ? 1f : 0.6f);
         var trRect = new RectangleF(_travelCell.X + (_travelCell.Width - trIcon) / 2f, _travelCell.Y + (_travelCell.Height - trIcon) / 2f, trIcon, trIcon);
@@ -466,13 +416,13 @@ public sealed class QuickPanelForm : Form
         else
             SvgIcons.Draw(g, SvgIcons.TravelOff, trRect, trOp);
 
-        DrawPill(g, _care80, "80%", _cfg.ChargeCare, _hover == 10, Green, PillFont);
+        DrawPill(g, _care80, "80%", _cfg.ChargeCare, _hover == 10, FlyoutPalette.Green, PillFont);
         DrawPill(g, _care100, "100%", !_cfg.ChargeCare, _hover == 11, Color.FromArgb(120, 120, 125), PillFont);
 
         // тачпад: подсвечиваем ячейку, когда он ВЫКЛЮЧЕН — нестандартное состояние заметнее
         if (!_tpCell.IsEmpty)
         {
-            DrawCell(g, _tpCell, !_tpOn, _hover == 17, Color.FromArgb(255, 82, 82), Sc(10));
+            DrawCell(g, _tpCell, !_tpOn, _hover == 17, FlyoutPalette.Red, Sc(10));
             float tpIcon = Math.Min(_tpCell.Width, _tpCell.Height) - Sc(8);
             SvgIcons.Draw(g,
                 _tpOn ? SvgIcons.Touchpad : SvgIcons.TouchpadOff,
@@ -483,7 +433,7 @@ public sealed class QuickPanelForm : Form
         // сенсорный экран: та же логика подсветки «выключен = заметнее», что и у тачпада
         if (!_tsCell.IsEmpty)
         {
-            DrawCell(g, _tsCell, !_tsOn, _hover == 18, Color.FromArgb(255, 82, 82), Sc(10));
+            DrawCell(g, _tsCell, !_tsOn, _hover == 18, FlyoutPalette.Red, Sc(10));
             float tsIcon = Math.Min(_tsCell.Width, _tsCell.Height) - Sc(8);
             SvgIcons.Draw(g,
                 _tsOn ? SvgIcons.Touchscreen : SvgIcons.TouchscreenOff,
@@ -492,7 +442,7 @@ public sealed class QuickPanelForm : Form
         }
 
         // авто-герцовка: монитор с круговыми стрелками, активна при включённой опции
-        DrawCell(g, _hzCell, _cfg.AutoRefreshRate, _hover == 15, Blue, Sc(10));
+        DrawCell(g, _hzCell, _cfg.AutoRefreshRate, _hover == 15, FlyoutPalette.Blue, Sc(10));
         float hzIcon = Math.Min(_hzCell.Width, _hzCell.Height) - Sc(8);
         SvgIcons.Draw(g,
             _cfg.AutoRefreshRate ? SvgIcons.RefreshRate : SvgIcons.RefreshRateOff,
@@ -503,9 +453,9 @@ public sealed class QuickPanelForm : Form
         if (!_awake.IsEmpty)
         {
             TextRenderer.DrawText(g, Loc.T("panel.awake"), CapFont,
-                new Rectangle(0, _awake.Y - Sc(20), _awake.Right, Sc(18)), DimCol, TextFormatFlags.Right | TextFormatFlags.Top);
+                new Rectangle(0, _awake.Y - Sc(20), _awake.Right, Sc(18)), FlyoutPalette.Dim, TextFormatFlags.Right | TextFormatFlags.Top);
 
-            DrawCell(g, _awake, _cfg.Awake, _hover == 13, Blue, Sc(10));
+            DrawCell(g, _awake, _cfg.Awake, _hover == 13, FlyoutPalette.Blue, Sc(10));
             float owlIcon = Math.Min(_awake.Width, _awake.Height) - Sc(8);
             SvgIcons.Draw(g,
                 _cfg.Awake ? SvgIcons.OwlAwake : SvgIcons.OwlAsleep,
@@ -531,12 +481,12 @@ public sealed class QuickPanelForm : Form
     {
         switch (m)
         {
-            case PerfMode.Eco:       SvgIcons.DrawMoonTwinkle(g, r, _gaugeT, k, opacity); break;
-            case PerfMode.Quiet:     SvgIcons.DrawLeafSway(g, r, _gaugeT, k, opacity); break;
-            case PerfMode.Auto:      SvgIcons.DrawGauge(g, r, k * OsdForm.SweepAngle(_gaugeT), opacity); break;
-            case PerfMode.Turbo:     SvgIcons.DrawBoltPulse(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.Eco: SvgIcons.DrawMoonTwinkle(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.Quiet: SvgIcons.DrawLeafSway(g, r, _gaugeT, k, opacity); break;
+            case PerfMode.Auto: SvgIcons.DrawGauge(g, r, k * OsdForm.SweepAngle(_gaugeT), opacity); break;
+            case PerfMode.Turbo: SvgIcons.DrawBoltPulse(g, r, _gaugeT, k, opacity); break;
             case PerfMode.FullSpeed: SvgIcons.DrawRocket(g, r, _gaugeT, k, opacity); break;
-            default:                 DrawModeIcon(g, m, r, opacity); break;
+            default: DrawModeIcon(g, m, r, opacity); break;
         }
     }
 
@@ -562,7 +512,7 @@ public sealed class QuickPanelForm : Form
             g.FillPath(b, path);
 
         TextRenderer.DrawText(g, text, font, r,
-            active ? Color.White : DimCol,
+            active ? Color.White : FlyoutPalette.Dim,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 

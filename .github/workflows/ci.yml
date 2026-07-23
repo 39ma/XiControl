@@ -1,5 +1,6 @@
 # CI: на каждый PR и push в main — собрать и прогнать тесты.
-# Дополняет release.yml (тот только публикует артефакты, тестов не гоняет).
+# Дополняет release.yml (тот публикует артефакты; перед публикацией гоняет
+# те же тесты своим шагом — workflow'ы триггерятся независимо друг от друга).
 name: ci
 
 on:
@@ -34,10 +35,10 @@ jobs:
       - name: Test
         run: dotnet test XiControl.sln -c Release --no-build --nologo
 
-      # Информационный шаг: показывает дрейф стиля, но пока НЕ роняет CI.
-      # Кодовая база содержит осознанное выравнивание (напр. таблица локализации
-      # Loc.cs), которое dotnet format хочет схлопнуть. Станет жёстким гейтом
-      # после нормализации стиля в Фазе 4 (тогда убрать continue-on-error).
+      # Информационный шаг: показывает дрейф стиля, но НЕ роняет CI — и это
+      # осознанно навсегда (решение Фазы 4): в Loc.cs и OsdForm.cs намеренное
+      # колоночное выравнивание, которое dotnet format схлопывает. Правила же
+      # анализаторов и так жёсткие — они входят в Build через TreatWarningsAsErrors.
       - name: Format check (non-blocking)
         continue-on-error: true
         run: dotnet format XiControl.sln --verify-no-changes --severity info

@@ -199,6 +199,19 @@ public sealed class AppControllerTests
     }
 
     [Fact]
+    public void CurrentStartStrategy_MirrorsSetStrategy()
+    {
+        _mifs.Mode = PerfMode.Turbo;
+        _c.CurrentStartStrategy.Should().Be(StartStrategy.None);
+
+        foreach (var s in new[] { StartStrategy.Restore, StartStrategy.Pin, StartStrategy.Profiles, StartStrategy.None })
+        {
+            _c.SetStartStrategy(s);
+            _c.CurrentStartStrategy.Should().Be(s, "радио-карточки настроек рисуются по этому свойству");
+        }
+    }
+
+    [Fact]
     public void PinStrategy_CannotPinAuto()
     {
         _mifs.Mode = PerfMode.Auto;

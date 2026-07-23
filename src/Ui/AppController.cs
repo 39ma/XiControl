@@ -27,8 +27,9 @@ public sealed class AppController
     private PerfMode[] _modes = [];
     private bool _autoStart;   // кэш состояния автозапуска (не дёргаем schtasks на каждое меню)
 
-    // Все режимы по нарастанию мощности — этот же порядок задаёт цикл Mi-кнопки.
-    private static readonly PerfMode[] AllModes =
+    // Все режимы по нарастанию мощности — этот же порядок задаёт цикл Mi-кнопки
+    // и список в комбо профилей питания (вкладка «Производительность»).
+    internal static readonly PerfMode[] AllModes =
         [PerfMode.Eco, PerfMode.Quiet, PerfMode.Auto, PerfMode.Turbo, PerfMode.FullSpeed];
 
     // --- уведомления для UI: ядро сообщает «что случилось», не «что показать» ---
@@ -221,6 +222,16 @@ public sealed class AppController
         (_cfg.FullSpeedMode || m != PerfMode.FullSpeed)).ToArray();
 
     // ---- Стратегия режима при старте ----
+
+    /// <summary>
+    /// Текущая стратегия — производная от трёх взаимоисключающих флагов конфига
+    /// (порядок проверки = приоритет на случай рассинхрона после ручной правки config.json).
+    /// </summary>
+    public StartStrategy CurrentStartStrategy =>
+        _cfg.PowerProfiles ? StartStrategy.Profiles
+        : _cfg.ForceStartMode is not null ? StartStrategy.Pin
+        : _cfg.RestoreMode ? StartStrategy.Restore
+        : StartStrategy.None;
 
     /// <summary>Radio в окне настроек → взаимоисключающая логика стратегий старта.</summary>
     public void SetStartStrategy(StartStrategy s)

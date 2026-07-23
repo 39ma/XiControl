@@ -325,6 +325,7 @@ public sealed class TrayApp : IDisposable
                 SetAutoStart = _controller.ToggleAutoStart,
                 SetLanguage = _controller.SetLanguage,
                 SetModeVisibility = _controller.ToggleModeVisibility,
+                GetStartStrategy = () => _controller.CurrentStartStrategy,
                 SetStartStrategy = _controller.SetStartStrategy,
                 SetProfileMode = _controller.SetProfileMode,
                 SetRememberBrightness = _controller.SetRememberBrightness,

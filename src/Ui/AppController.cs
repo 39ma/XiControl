@@ -394,11 +394,17 @@ public sealed class AppController
         });
     }
 
-    /// <summary>Смена языка: применяется сразу; UI сам пересоберёт свои подписи.</summary>
-    public void SetLanguage(Lang lang)
+    /// <summary>Доступные языки (культура + родное название) — для комбо настроек.</summary>
+    public IReadOnlyList<LangInfo> Languages => _loc.Available;
+
+    /// <summary>Текущий язык интерфейса (культурный код).</summary>
+    public string CurrentLanguage => _loc.Current;
+
+    /// <summary>Смена языка (культурный код): применяется сразу; UI сам пересоберёт свои подписи.</summary>
+    public void SetLanguage(string culture)
     {
-        _cfg.Language = lang;
-        _loc.Current = lang;
+        _loc.Current = culture;        // Loc нормализует неизвестную культуру к базовой
+        _cfg.Language = _loc.Current;
         _cfg.Save();
         LanguageChanged?.Invoke();
     }

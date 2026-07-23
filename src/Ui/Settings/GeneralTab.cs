@@ -9,10 +9,13 @@ public sealed class GeneralTab : SettingsPane
     public GeneralTab(SettingsToolkit ui, AppConfig cfg, SettingsActions act, Action rebuild) : base(ui)
     {
         ui.AddHeader(this, "settings.tab.general", "settings.general.sub");
+        // список языков — из встроенных переводов (родные названия); выбор по культурному коду
+        var langs = act.Languages();
+        int curLang = Math.Max(0, IndexOfCulture(langs, act.CurrentLanguage()));
         ui.AddRow(this, "settings.language", "settings.language.desc",
-            ui.Combo(["Русский", "English", "中文"], (int)cfg.Language, i =>
+            ui.Combo([.. langs.Select(l => l.Name)], curLang, i =>
             {
-                act.SetLanguage((Lang)i);
+                act.SetLanguage(langs[i].Culture);
                 rebuild(); // пересобрать окно на новом языке (после выхода из обработчика)
             }, ui.Sc(150)));
         ui.AddRow(this, "settings.autostart", "settings.autostart.desc",
@@ -35,5 +38,13 @@ public sealed class GeneralTab : SettingsPane
                 if (on) { Log.Enabled = true; Log.Write("Логирование включено"); }
                 else { Log.Write("Логирование выключено"); Log.Enabled = false; } // прощальная строчка — видно, что тишина намеренная
             }));
+    }
+
+    // Индекс языка с данной культурой в списке (−1 — нет; вызывающий приведёт к 0).
+    private static int IndexOfCulture(IReadOnlyList<LangInfo> langs, string culture)
+    {
+        for (int i = 0; i < langs.Count; i++)
+            if (string.Equals(langs[i].Culture, culture, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
     }
 }

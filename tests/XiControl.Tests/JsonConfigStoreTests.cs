@@ -27,7 +27,7 @@ public sealed class JsonConfigStoreTests : IDisposable
         var store = new JsonConfigStore(_dir);
         var cfg = new AppConfig
         {
-            Language = Lang.Zh,
+            Language = "zh",
             ChargeCare = true,
             StartPerfMode = PerfMode.Turbo,
             MiClickAction = "touchpad",
@@ -36,7 +36,7 @@ public sealed class JsonConfigStoreTests : IDisposable
         store.Save(cfg);
         var loaded = new JsonConfigStore(_dir).Load();
 
-        loaded.Language.Should().Be(Lang.Zh);
+        loaded.Language.Should().Be("zh");
         loaded.ChargeCare.Should().BeTrue();
         loaded.StartPerfMode.Should().Be(PerfMode.Turbo);
         loaded.MiClickAction.Should().Be("touchpad");
@@ -53,6 +53,18 @@ public sealed class JsonConfigStoreTests : IDisposable
         cfg.Save();   // должен уйти в НАШ store (в _dir), а не в %APPDATA%
 
         new JsonConfigStore(_dir).Load().ChargeCare.Should().BeTrue();
+    }
+
+    [Fact]
+    public void LegacyIntLanguage_MigratesToCultureCode()
+    {
+        // конфиг старого формата: язык хранился индексом enum (0=ru, 1=en, 2=zh)
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "config.json"), "{ \"Language\": 2 }");
+
+        var cfg = new JsonConfigStore(_dir).Load();
+
+        cfg.Language.Should().Be("zh", "старый индекс 2 должен мигрировать в культурный код");
     }
 
     [Fact]

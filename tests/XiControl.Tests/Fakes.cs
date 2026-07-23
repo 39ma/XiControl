@@ -37,6 +37,7 @@ internal sealed class FakePowerEvents : IPowerEvents
     public event Action? SessionEnding;
 
     public bool IsOnline { get; set; } = true;
+    public float BatteryLifePercent { get; set; } = 0.5f;
 
     public void RaisePower(PowerModes mode) => PowerModeChanged?.Invoke(mode);
     public void RaiseSession() => SessionEnding?.Invoke();

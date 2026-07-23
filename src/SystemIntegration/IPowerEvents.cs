@@ -16,6 +16,9 @@ public interface IPowerEvents : IDisposable
 
     /// <summary>true — питание от сети (AC), false — батарея.</summary>
     bool IsOnline { get; }
+
+    /// <summary>Заряд батареи 0..1; вне диапазона (напр. 2.55) — «неизвестно» (семантика WinForms).</summary>
+    float BatteryLifePercent { get; }
 }
 
 /// <summary>Прод-реализация поверх статических событий WinForms.</summary>
@@ -26,6 +29,8 @@ public sealed class SystemPowerEvents : IPowerEvents
 
     public bool IsOnline =>
         SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
+
+    public float BatteryLifePercent => SystemInformation.PowerStatus.BatteryLifePercent;
 
     public SystemPowerEvents()
     {

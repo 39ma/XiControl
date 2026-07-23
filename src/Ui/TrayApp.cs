@@ -32,9 +32,8 @@ public sealed class TrayApp : IDisposable
     private PerfMode? _iconMode;
     private bool _iconInit;
 
-    // «В дорогу»: пока режим активен и на зарядке — ждём 100%, тогда OSD (+джингл). Опрос раз в 5 с.
-    private readonly System.Windows.Forms.Timer _travelTimer = new() { Interval = 5000 };
-    private bool _travelNotified;
+    // «В дорогу»: наблюдение за 100% вынесено в TravelChargeMonitor
+    private readonly TravelChargeMonitor _travel;
 
     // Жесты Mi-кнопки и роутинг клавиш — вынесены в Input/ (MiButtonGesture, KeyRouter)
     private readonly MiButtonGesture _mi;
@@ -57,7 +56,7 @@ public sealed class TrayApp : IDisposable
     // панель, подписки). Стартовая бизнес-логика — в Start(), её зовёт Program.Main.
     public TrayApp(IMifsClient mifs, AppConfig cfg, IKeyEventSource events,
         ChargeGuard guard, RefreshRateGuard hzGuard, PowerProfileGuard powerGuard,
-        TouchpadControl touchpad, TouchscreenControl touchscreen)
+        TouchpadControl touchpad, TouchscreenControl touchscreen, TravelChargeMonitor travel)
     {
         _mifs = mifs;
         _cfg = cfg;
@@ -67,6 +66,7 @@ public sealed class TrayApp : IDisposable
         _powerGuard = powerGuard;
         _touchpad = touchpad;
         _touchscreen = touchscreen;
+        _travel = travel;
         ApplyModeVisibility();
 
         _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
@@ -89,7 +89,12 @@ public sealed class TrayApp : IDisposable
             if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => UpdateTrayIcon()));
         };
 
-        _travelTimer.Tick += (_, _) => CheckTravelFull();
+        // Дозарядились до 100% «в дорогу» → OSD + джингл (сам опрос — в мониторе)
+        _travel.Ready = () =>
+        {
+            _osd.Flash(OsdKind.Travel, Loc.T("osd.travel.ready"));
+            if (_cfg.TravelSound) Sound.PlayTravelReady(_cfg.TravelSoundFile);
+        };
 
         // OSD на смену питания
         _ = _osd.Handle; // форсируем создание хэндла для маршалинга событий в UI-поток
@@ -100,7 +105,7 @@ public sealed class TrayApp : IDisposable
         _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
-        _panel.TravelChanged = OnPanelTravelChanged;
+        _panel.TravelChanged = _travel.Rearm; // панель сама переключила режим — перевзвести наблюдение
         // Жесты Mi: одинарный/двойной клик настраиваются (MiClickAction/MiDoubleAction);
         // двойной = "none" — жест отключён, одинарный срабатывает мгновенно; удержание → панель
         _mi = new MiButtonGesture
@@ -164,7 +169,7 @@ public sealed class TrayApp : IDisposable
         // продолжаем ждать, иначе (уже отключены) сбрасываем: режим живёт только на зарядке.
         if (_cfg.TravelMode)
         {
-            if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travelTimer.Start();
+            if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travel.Rearm();
             else { _cfg.TravelMode = false; _cfg.Save(); }
         }
 
@@ -348,7 +353,7 @@ public sealed class TrayApp : IDisposable
         if (_cfg.TravelMode)
         {
             if (!online) DisableTravel();
-            else { _travelNotified = false; _travelTimer.Start(); }
+            else _travel.Rearm(); // подключили при активном режиме — заново ждём 100%
         }
 
         if (_osd.IsHandleCreated) _osd.BeginInvoke(() => ShowPowerOsd(online));
@@ -586,7 +591,7 @@ public sealed class TrayApp : IDisposable
     private void ToggleCare(bool on)
     {
         // ручная смена лимита заряда отменяет временный режим «В дорогу»
-        if (_cfg.TravelMode) { _cfg.TravelMode = false; _travelTimer.Stop(); _travelNotified = false; }
+        if (_cfg.TravelMode) { _cfg.TravelMode = false; _travel.Rearm(); }
         Safe(() => { _mifs.SetChargeCare(on); return true; }, false);
         _cfg.ChargeCare = on;
         _cfg.Save();
@@ -604,11 +609,9 @@ public sealed class TrayApp : IDisposable
         if (on && !_cfg.ChargeCare) return;
         _cfg.TravelMode = on;
         _cfg.Save();
-        _travelNotified = false;
         // on → снять защиту (заряд до 100); off → вернуть базовый режим заряда
         Safe(() => { _mifs.SetChargeCare(on ? false : _cfg.ChargeCare); return true; }, false);
-        if (on && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travelTimer.Start();
-        else _travelTimer.Stop();
+        _travel.Rearm();
         if (_panel.Visible) _panel.RefreshUi();
         else if (on) _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub"));
         else _osd.Flash(OsdKind.TravelOff, Loc.T("osd.travel.off"));
@@ -619,34 +622,8 @@ public sealed class TrayApp : IDisposable
     {
         _cfg.TravelMode = false;
         _cfg.Save();
-        _travelTimer.Stop();
-        _travelNotified = false;
+        _travel.Rearm();
         if (_panel.Visible) _panel.RefreshUi();
-    }
-
-    // Панель сама переключила «В дорогу» (config + firmware) — на нас только наблюдение за 100%.
-    private void OnPanelTravelChanged()
-    {
-        _travelNotified = false;
-        if (_cfg.TravelMode && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online)
-            _travelTimer.Start();
-        else
-            _travelTimer.Stop();
-    }
-
-    // Батарея дозарядилась до 100% в режиме «В дорогу» → OSD (+джингл), один раз за сессию режима.
-    private void CheckTravelFull()
-    {
-        if (!_cfg.TravelMode) { _travelTimer.Stop(); return; }
-        if (_travelNotified) return;
-        var ps = SystemInformation.PowerStatus;
-        if (ps.PowerLineStatus != PowerLineStatus.Online) return; // не на зарядке — ждём
-        float f = ps.BatteryLifePercent;
-        if (f < 0.999f || f > 1.001f) return; // ждём ровно 100% (значение вне [0..1] = «неизвестно»)
-        _travelNotified = true;
-        _travelTimer.Stop();
-        _osd.Flash(OsdKind.Travel, Loc.T("osd.travel.ready"));
-        if (_cfg.TravelSound) Sound.PlayTravelReady(_cfg.TravelSoundFile);
     }
 
     private void SetMode(PerfMode mode, string key)
@@ -856,7 +833,6 @@ public sealed class TrayApp : IDisposable
         SystemEvents.PowerModeChanged -= OnPower;
         SystemEvents.UserPreferenceChanged -= OnUserPref;
         _iconTimer.Dispose();
-        _travelTimer.Dispose();
         _mi.Dispose();
         // _events / guard-ы / IPowerEvents / IMifsClient диспоузит DI-провайдер
         // (в обратном порядке создания), TrayApp ими не владеет

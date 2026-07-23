@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using XiControl.Config;
+using XiControl.Input;
 using XiControl.Localization;
 using XiControl.SystemIntegration;
 using XiControl.Wmi;
@@ -35,10 +36,8 @@ public sealed class TrayApp : IDisposable
     private readonly System.Windows.Forms.Timer _travelTimer = new() { Interval = 5000 };
     private bool _travelNotified;
 
-    private readonly System.Windows.Forms.Timer _miHold = new() { Interval = 400 };  // порог «долгого» нажатия Mi
-    private readonly System.Windows.Forms.Timer _miClick = new() { Interval = 300 }; // окно ожидания двойного клика
-    private bool _miHandled;
-    private int _miClicks;
+    // Жесты Mi-кнопки (клик/двойной/удержание) — вынесены в MiButtonGesture
+    private readonly MiButtonGesture _mi;
 
     private static readonly (string key, PerfMode mode)[] Modes =
     [
@@ -101,8 +100,15 @@ public sealed class TrayApp : IDisposable
         _panel.Changed = () => UpdateTrayIcon();
         _panel.MonitorRequested = ShowMonitor;
         _panel.TravelChanged = OnPanelTravelChanged;
-        _miHold.Tick += (_, _) => OnMiHold();
-        _miClick.Tick += (_, _) => OnMiClickTimeout();
+        // Жесты Mi: одинарный/двойной клик настраиваются (MiClickAction/MiDoubleAction);
+        // двойной = "none" — жест отключён, одинарный срабатывает мгновенно; удержание → панель
+        _mi = new MiButtonGesture
+        {
+            Click = () => RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand),
+            DoubleClick = () => RunKeyAction(_cfg.MiDoubleAction, _cfg.MiDoubleCommand),
+            Hold = () => _panel.Toggle(),
+            DoubleEnabled = () => !string.Equals(_cfg.MiDoubleAction, "none", StringComparison.OrdinalIgnoreCase),
+        };
         _events.KeyPressed += OnKey;
 
         // Реакция на смену темы Windows + лёгкий опрос значка
@@ -247,8 +253,8 @@ public sealed class TrayApp : IDisposable
     {
         switch (code)
         {
-            case Mifs.KeyMiDown: OnMiDown(); break;
-            case Mifs.KeyMiUp: OnMiUp(); break;
+            case Mifs.KeyMiDown: _mi.Down(); break;
+            case Mifs.KeyMiUp: _mi.Up(); break;
             case Mifs.KeyProjection when value == 0:                                 // value 2 = слабый зарядник — пока пропуск
                 RunKeyAction(_cfg.ProjKeyAction, _cfg.ProjKeyCommand); break;
             case Mifs.KeySettings: OnSettingsKey(); break; // одиночное событие, удержание не ловится
@@ -359,61 +365,6 @@ public sealed class TrayApp : IDisposable
             _ => OsdKind.Backlight,
         };
         _osd.Flash(kind, Loc.T("osd.backlight"), sub);
-    }
-
-    private void OnMiDown()
-    {
-        _miHandled = false;
-        _miHold.Stop();
-        _miHold.Start();
-    }
-
-    // Жесты Mi: одинарный клик (после окна двойного) / двойной клик / удержание.
-    // Действия обоих кликов настраиваются (MiClickAction/MiDoubleAction);
-    // двойной = "none" — жест отключён, одинарный срабатывает мгновенно.
-    private bool MiDoubleEnabled => !string.Equals(_cfg.MiDoubleAction, "none", StringComparison.OrdinalIgnoreCase);
-
-    private void OnMiUp()
-    {
-        _miHold.Stop();
-        if (_miHandled) { _miClicks = 0; return; }
-
-        // двойной клик отключён — одинарный без задержки
-        if (!MiDoubleEnabled)
-        {
-            RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand);
-            return;
-        }
-
-        _miClicks++;
-        _miClick.Stop();
-        if (_miClicks >= 2)
-        {
-            _miClicks = 0;
-            RunKeyAction(_cfg.MiDoubleAction, _cfg.MiDoubleCommand); // двойной клик
-        }
-        else
-        {
-            _miClick.Start(); // ждём: не начало ли это двойного
-        }
-    }
-
-    private void OnMiClickTimeout()
-    {
-        _miClick.Stop();
-        if (_miClicks == 1)
-            RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand); // одинарный клик
-        _miClicks = 0;
-    }
-
-    private void OnMiHold()
-    {
-        _miHold.Stop();
-        if (_miHandled) return;
-        _miHandled = true;
-        _miClick.Stop();
-        _miClicks = 0;
-        _panel.Toggle();       // удержание → панель
     }
 
     private void OnPower(object? sender, PowerModeChangedEventArgs e)
@@ -937,8 +888,7 @@ public sealed class TrayApp : IDisposable
         SystemEvents.UserPreferenceChanged -= OnUserPref;
         _iconTimer.Dispose();
         _travelTimer.Dispose();
-        _miHold.Dispose();
-        _miClick.Dispose();
+        _mi.Dispose();
         // _events / guard-ы / IPowerEvents / IMifsClient диспоузит DI-провайдер
         // (в обратном порядке создания), TrayApp ими не владеет
         _osd.Dispose();

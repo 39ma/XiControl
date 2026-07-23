@@ -16,7 +16,7 @@ static class Program
 
         ApplicationConfiguration.Initialize();
 
-        var cfg = AppConfig.Load();
+        var cfg = new JsonConfigStore().Load();
         Log.Enabled = cfg.LogEnabled; // до этой строчки лог включён — ошибки старта не теряем
         Loc.Current = cfg.Language;
 

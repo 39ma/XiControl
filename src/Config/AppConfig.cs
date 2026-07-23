@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using XiControl.Localization;
 using XiControl.Wmi;
@@ -217,28 +216,9 @@ public sealed class AppConfig
     /// <summary>Устаревшее: аргументы для AiKeyProgram.</summary>
     public string? AiKeyArgs { get; set; }
 
-    [JsonIgnore]
-    private static string Dir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "XiControl");
-
-    [JsonIgnore]
-    private static string FilePath => Path.Combine(Dir, "config.json");
-
-    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
-
-    public static AppConfig Load()
-    {
-        AppConfig cfg;
-        try
-        {
-            cfg = File.Exists(FilePath)
-                ? JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath)) ?? Fresh()
-                : Fresh();
-        }
-        catch (Exception ex) { Log.Ex("AppConfig.Load", ex); cfg = Fresh(); /* повреждённый конфиг → дефолт */ }
-        cfg.MigrateKeyActions();
-        return cfg;
-    }
+    // Persistence живёт за IConfigStore (JsonConfigStore); ссылку ставит store при Load.
+    // Поле (не свойство) — System.Text.Json игнорирует поля при (де)сериализации.
+    internal IConfigStore? Store;
 
     /// <summary>
     /// Заполнить пустые действия клавиш дефолтами, перенеся старые опции (MiShortPress,
@@ -272,27 +252,8 @@ public sealed class AppConfig
         ProjKeyAction ??= "projection";
     }
 
-    /// <summary>Конфиг для первого старта (файла нет / повреждён): язык — по языку ОС.</summary>
-    private static AppConfig Fresh() => new() { Language = DetectOsLanguage() };
-
-    /// <summary>Язык интерфейса по языку Windows: ru→Ru, zh→Zh, всё остальное (вкл. en)→En.</summary>
-    private static Lang DetectOsLanguage() =>
-        System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName switch
-        {
-            "ru" => Lang.Ru,
-            "zh" => Lang.Zh,
-            _ => Lang.En,
-        };
-
-    public void Save()
-    {
-        try
-        {
-            Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
-        }
-        catch (Exception ex) { Log.Ex("AppConfig.Save", ex); /* не критично */ }
-    }
+    /// <summary>Сохранить через привязанный store. Без store (голый POCO в тестах) — no-op.</summary>
+    public void Save() => Store?.Save(this);
 
     /// <summary>Запомнить режим для восстановления — только если опция включена и значение изменилось (бережём SSD).</summary>
     public void RememberMode(PerfMode mode)

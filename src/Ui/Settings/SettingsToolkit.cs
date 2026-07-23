@@ -238,7 +238,7 @@ public sealed class SettingsToolkit
     {
         var b = new Button
         {
-            Text = keyOrText.StartsWith("settings.") || keyOrText.StartsWith("app.") ? Loc.T(keyOrText) : keyOrText,
+            Text = keyOrText.StartsWith("settings.", StringComparison.Ordinal) || keyOrText.StartsWith("app.", StringComparison.Ordinal) ? Loc.T(keyOrText) : keyOrText,
             AutoSize = false,
             Height = Sc(30),
             Width = Sc(0),

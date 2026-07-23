@@ -43,12 +43,19 @@ public static class AwakeMode
                     cfg.AwakeSavedLidAc = (int)cur;
                 }
 
-                PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref SubButtons, ref LidAction, LidDoNothing);
-                PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+                uint wr = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref SubButtons, ref LidAction, LidDoNothing);
+                uint act = PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+                if (wr != 0 || act != 0)
+                    Log.Write($"AwakeMode: действие крышки не переопределилось (write=0x{wr:X}, set=0x{act:X})");
             }
             finally { LocalFree(pScheme); }
 
-            SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
+            // возвращает прежние флаги; 0 — вызов не принят (сон/экран не удержим)
+            if (SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED) == 0)
+            {
+                Log.Write("AwakeMode: SetThreadExecutionState не принял флаги");
+                return false;
+            }
             return true;
         }
         catch (Exception ex) { Log.Ex("AwakeMode.Enable", ex); return false; }
@@ -59,15 +66,18 @@ public static class AwakeMode
     {
         try
         {
-            SetThreadExecutionState(ES_CONTINUOUS);
+            if (SetThreadExecutionState(ES_CONTINUOUS) == 0)
+                Log.Write("AwakeMode: SetThreadExecutionState(сброс) не принят");
 
             if (cfg.AwakeSavedLidAc is int saved && PowerGetActiveScheme(IntPtr.Zero, out var pScheme) == 0)
             {
                 try
                 {
                     var scheme = Marshal.PtrToStructure<Guid>(pScheme);
-                    PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref SubButtons, ref LidAction, (uint)saved);
-                    PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+                    uint wr = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref SubButtons, ref LidAction, (uint)saved);
+                    uint act = PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+                    if (wr != 0 || act != 0)
+                        Log.Write($"AwakeMode: действие крышки не восстановилось (write=0x{wr:X}, set=0x{act:X})");
                 }
                 finally { LocalFree(pScheme); }
                 cfg.AwakeSavedLidAc = null;

@@ -105,7 +105,7 @@ if (args.Length > 0 && args[0] == "bench")
 // Режим "one <svg-path> [size]": отрендерить один SVG (белым на тёмном) для отладки.
 if (args.Length > 1 && args[0] == "one")
 {
-    int oneSize = args.Length > 2 ? int.Parse(args[2]) : 128;
+    int oneSize = args.Length > 2 ? int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 128;
     string t = File.ReadAllText(args[1]).Replace("currentColor", "#F0F0F0");
     var d1 = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(t);
     d1.Width = oneSize; d1.Height = oneSize;

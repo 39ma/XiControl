@@ -35,13 +35,15 @@ public sealed class MicControl : IDisposable
 
     public void SetMute(bool mute)
     {
-        try { _vol?.SetMute(mute, IntPtr.Zero); } catch { }
+        try { _vol?.SetMute(mute, IntPtr.Zero); }
+        catch (Exception ex) { Log.Ex("MicControl.SetMute", ex); } // мьют не применился — это стоит видеть в логе
     }
 
     public bool? GetMute()
     {
         if (_vol == null) return null;
-        try { return _vol.GetMute(out bool m) == 0 ? m : null; } catch { return null; }
+        try { return _vol.GetMute(out bool m) == 0 ? m : null; }
+        catch (Exception ex) { Log.Ex("MicControl.GetMute", ex); return null; }
     }
 
     public void Dispose()

@@ -5,7 +5,7 @@ public enum Lang { Ru = 0, En = 1, Zh = 2 }
 /// <summary>Простая локализация RU/EN/ZH. Ключ → [ru, en, zh].</summary>
 public static class Loc
 {
-    public static Lang Current = Lang.Ru;
+    public static Lang Current { get; set; } = Lang.Ru;
 
     private static readonly Dictionary<string, string[]> S = new()
     {
@@ -214,5 +214,5 @@ public static class Loc
         => S.TryGetValue(key, out var v) ? v[(int)Current] : key;
 
     public static string T(string key, params object[] args)
-        => string.Format(T(key), args);
+        => string.Format(System.Globalization.CultureInfo.CurrentCulture, T(key), args); // числа — в формате локали пользователя
 }

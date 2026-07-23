@@ -32,7 +32,7 @@ public static class BatteryInfo
             {
                 object? v = o[prop];
                 o.Dispose();
-                if (v != null) return Convert.ToDouble(v);
+                if (v != null) return Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         catch (Exception ex) { Log.Ex($"Battery.{cls}", ex); }

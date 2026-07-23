@@ -68,7 +68,7 @@ public sealed class MifsEventWatcher : IKeyEventSource
     {
         _disposed = true;
         _retry.Dispose();
-        try { _watcher.Stop(); } catch { }
+        try { _watcher.Stop(); } catch { /* WMI мог уже умереть при выходе — не критично */ }
         _watcher.Dispose();
     }
 }

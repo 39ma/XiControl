@@ -156,15 +156,16 @@ internal static class SvgGen
         int rows = (icons.Length + cols - 1) / cols;
         int W = cols * cellW, H = rows * cellH;
 
+        var inv = System.Globalization.CultureInfo.InvariantCulture; // SVG требует точку в числах при любой локали
         var sb = new StringBuilder();
-        sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {W} {H}\" font-family=\"Segoe UI, sans-serif\">");
-        sb.AppendLine($"<rect width=\"{W}\" height=\"{H}\" fill=\"{card}\"/>");
+        sb.AppendLine(inv, $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {W} {H}\" font-family=\"Segoe UI, sans-serif\">");
+        sb.AppendLine(inv, $"<rect width=\"{W}\" height=\"{H}\" fill=\"{card}\"/>");
         for (int i = 0; i < icons.Length; i++)
         {
             int col = i % cols, row = i / cols;
             double tx = col * cellW + (cellW - iconPx) / 2.0, ty = row * cellH + 20;
-            sb.AppendLine($"<g transform=\"translate({N(tx)},{N(ty)}) scale({N(k)})\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{icons[i].inner}</g>");
-            sb.AppendLine($"<text x=\"{col * cellW + cellW / 2.0}\" y=\"{row * cellH + cellH - 22}\" fill=\"{txt}\" font-size=\"13\" text-anchor=\"middle\">{icons[i].label} · {icons[i].file}</text>");
+            sb.AppendLine(inv, $"<g transform=\"translate({N(tx)},{N(ty)}) scale({N(k)})\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{icons[i].inner}</g>");
+            sb.AppendLine(inv, $"<text x=\"{col * cellW + cellW / 2.0}\" y=\"{row * cellH + cellH - 22}\" fill=\"{txt}\" font-size=\"13\" text-anchor=\"middle\">{icons[i].label} · {icons[i].file}</text>");
         }
         sb.AppendLine("</svg>");
         return sb.ToString();

@@ -242,7 +242,7 @@ public sealed class MonitorForm : FlyoutForm
                 object? t = o["Temperature"];
                 o.Dispose();
                 if (t is null) continue;
-                int c = Convert.ToInt32(t);
+                int c = Convert.ToInt32(t, System.Globalization.CultureInfo.InvariantCulture);
                 if (c > max && c < 130) max = c; // >130 °C — неинициализированный домен, отбрасываем
             }
             if (any) { _hasTemp = true; ReadCriticalOnce(); } else _tempOff = true; // класс есть → строка + крит-порог
@@ -269,7 +269,7 @@ public sealed class MonitorForm : FlyoutForm
                 object? v = o["CriticalTripPoint"];
                 o.Dispose();
                 if (v is null) continue;
-                float c = Convert.ToSingle(v) / 10f - 273.15f;
+                float c = Convert.ToSingle(v, System.Globalization.CultureInfo.InvariantCulture) / 10f - 273.15f;
                 if (c is > 60f and < 120f) { _critC = c; break; } // правдоподобный крит-порог
             }
         }

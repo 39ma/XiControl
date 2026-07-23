@@ -1,9 +1,6 @@
 <Project>
 
   <!-- Единые свойства для всех проектов репозитория (src, tools, tests). -->
-  <!-- Фаза 0.2 плана. TreatWarningsAsErrors намеренно НЕ включён:            -->
-  <!-- сначала разгребаем предупреждения анализаторов пачками, только потом   -->
-  <!-- поднимаем планку (см. XiControl_improvement_plan.md, п.0.2).           -->
 
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
@@ -14,8 +11,9 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
-    <!-- Пока только собираем статистику предупреждений, не роняем сборку -->
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Фаза 4: baseline анализаторов разобран (осознанные исключения — в .editorconfig
+         с обоснованием), с этого момента любое предупреждение роняет сборку -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

@@ -16,7 +16,7 @@ public static class FormChrome
     public static void SetDwmDark(Form f, bool dark)
     {
         if (!f.IsHandleCreated) return;
-        try { int v = dark ? 1 : 0; DwmSetWindowAttribute(f.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int)); }
+        try { int v = dark ? 1 : 0; _ = DwmSetWindowAttribute(f.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int)); }
         catch { /* старая Windows — не критично */ }
     }
 

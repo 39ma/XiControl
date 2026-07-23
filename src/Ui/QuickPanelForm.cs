@@ -89,11 +89,13 @@ public sealed class QuickPanelForm : FlyoutForm
 
     private void RefreshState()
     {
-        try { _mode = _mifs.GetPerfMode(); } catch { _mode = null; }
+        // деградация с логом: панель откроется и без ответивших подсистем
+        try { _mode = _mifs.GetPerfMode(); }
+        catch (Exception ex) { Log.Ex("QuickPanel.Mode", ex); _mode = null; }
         try { _tpAvail = _cfg.TouchpadFeature && _tp.Available; _tpOn = _tp.IsEnabled() ?? false; }
-        catch { _tpAvail = false; }
+        catch (Exception ex) { Log.Ex("QuickPanel.Touchpad", ex); _tpAvail = false; }
         try { _tsAvail = _cfg.TouchscreenFeature && _ts.Available; _tsOn = _ts.IsEnabled() ?? false; }
-        catch { _tsAvail = false; }
+        catch (Exception ex) { Log.Ex("QuickPanel.Touchscreen", ex); _tsAvail = false; }
     }
 
     /// <summary>Пересобрать набор видимых режимов из конфига (EcoMode/FullSpeedMode).</summary>
@@ -232,7 +234,8 @@ public sealed class QuickPanelForm : FlyoutForm
 
     private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && (int)wParam is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
+        // сравниваем в long: (int)IntPtr на x64 молча обрезает старшие биты (CA2020)
+        if (nCode >= 0 && (long)wParam is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
         {
             var h = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
             // клик не проглатываем — просто прячем панель, если он вне её габаритов
@@ -474,7 +477,7 @@ public sealed class QuickPanelForm : FlyoutForm
         SvgIcons.Draw(g, name, r, opacity);
     }
 
-    private void DrawPill(Graphics g, Rectangle r, string text, bool active, bool hover, Color accent, Font font)
+    private static void DrawPill(Graphics g, Rectangle r, string text, bool active, bool hover, Color accent, Font font)
     {
         Color bg = active ? accent : (hover ? Color.FromArgb(52, 52, 56) : Cell);
         using (var b = new SolidBrush(bg))

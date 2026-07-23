@@ -45,27 +45,15 @@ dotnet_diagnostic.CA2211.severity = none
 dotnet_diagnostic.CA1001.severity = none        # тест-классы держат фейки/семафоры без IDisposable — xUnit создаёт экземпляр на тест
 
 [*.cs]
-# === Временный baseline анализаторов (Фаза 0) ===================================
-# Анализаторы подключены (Directory.Build.props). Чтобы сборка оставалась 0/0 по
-# норме CLAUDE.md, текущий набор сработавших правил приглушён до suggestion —
-# видно в IDE как подсказки, но не ломает сборку. Фаза 4 поднимает их обратно
-# пачками (severity = warning) по мере чистки, затем включаем TreatWarningsAsErrors.
-#
-# Приоритет на разбор в Фазе 4 (это не стиль, а корректность):
-#   CA2020 — QuickPanelForm.cs:269, IntPtr→Int32 молча не бросает при переполнении
-#   CA1310 — StartsWith/сравнения без StringComparison
-#   CA1806 — проигнорированный результат P/Invoke (осознанная деградация — но сверить)
-
-dotnet_diagnostic.CA1051.severity = suggestion  # публичные instance-поля (намеренно в struct-DTO)
-dotnet_diagnostic.CA1805.severity = suggestion  # лишняя инициализация в default
-dotnet_diagnostic.CA1806.severity = suggestion  # проигнорированный HRESULT/код ошибки P/Invoke
-dotnet_diagnostic.CA1305.severity = suggestion  # IFormatProvider в форматировании
-dotnet_diagnostic.CA1310.severity = suggestion  # StringComparison в StartsWith/сравнениях
-dotnet_diagnostic.CA1822.severity = suggestion  # член можно сделать static
-dotnet_diagnostic.CA1838.severity = suggestion  # StringBuilder в P/Invoke
-dotnet_diagnostic.CA1839.severity = suggestion  # Environment.ProcessPath вместо GetCurrentProcess().MainModule
-dotnet_diagnostic.CA1859.severity = suggestion  # конкретные типы вместо интерфейсов (перф)
-dotnet_diagnostic.CA2020.severity = suggestion  # поведение IntPtr/UIntPtr операторов (.NET 7+)
-dotnet_diagnostic.CA2211.severity = suggestion  # видимые не-const static поля (напр. Loc.Current — уйдёт в Фазе 1)
-dotnet_diagnostic.CA1716.severity = suggestion  # имена типа Stop/интерфейсов vs VB-ключевые слова — VB-совместимость не нужна
-# ================================================================================
+# === Осознанно отключённые правила (Фаза 4: baseline разобран, остальное — warning) ==
+# CA1051 — публичные поля намеренно: идиома проекта «сумка колбэков» (public Action?,
+#          образец — SettingsActions) + readonly-палитры/DTO. Это приложение, а не
+#          библиотека — внешних потребителей у типов нет, свойства дали бы только шум.
+dotnet_diagnostic.CA1051.severity = none
+# CA1805 — явные "= false" в AppConfig документируют дефолты config.json; читаемость
+#          конфига важнее микрооптимизации инициализации.
+dotnet_diagnostic.CA1805.severity = none
+# CA1716 — имена вроде IAppTimer.Stop() конфликтуют только с VB-ключевыми словами;
+#          VB-потребителей нет и не будет.
+dotnet_diagnostic.CA1716.severity = none
+# =====================================================================================

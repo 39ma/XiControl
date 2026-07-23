@@ -1,0 +1,43 @@
+# CI: на каждый PR и push в main — собрать и прогнать тесты.
+# Дополняет release.yml (тот только публикует артефакты, тестов не гоняет).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# для одного ref держим один прогон
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore XiControl.sln
+
+      # Жёсткий гейт №1: solution собирается (сейчас 0 предупреждений — норма CLAUDE.md).
+      - name: Build
+        run: dotnet build XiControl.sln -c Release --no-restore --nologo
+
+      # Жёсткий гейт №2: юнит-тесты зелёные.
+      - name: Test
+        run: dotnet test XiControl.sln -c Release --no-build --nologo
+
+      # Информационный шаг: показывает дрейф стиля, но пока НЕ роняет CI.
+      # Кодовая база содержит осознанное выравнивание (напр. таблица локализации
+      # Loc.cs), которое dotnet format хочет схлопнуть. Станет жёстким гейтом
+      # после нормализации стиля в Фазе 4 (тогда убрать continue-on-error).
+      - name: Format check (non-blocking)
+        continue-on-error: true
+        run: dotnet format XiControl.sln --verify-no-changes --severity info

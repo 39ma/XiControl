@@ -1,0 +1,69 @@
+root = true
+
+# XiControl — единый стиль кода. Минимальный старт по плану (Фаза 0.3),
+# расширяется по мере разгребания предупреждений (Фаза 4).
+
+[*]
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8-bom
+
+[*.{yml,yaml,json,jsonc}]
+indent_size = 2
+
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+end_of_line = crlf
+
+# --- организация using-директив ---
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# --- стиль неймспейсов и модификаторов (Фаза 4: file-scoped namespaces) ---
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+
+# --- современный C# ---
+csharp_prefer_braces = true:silent
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+
+# --- приглушённые правила ---
+# ConfigureAwait в UI-приложении (единственный UI-контекст) не нужен
+dotnet_diagnostic.CA2007.severity = none
+
+# --- тесты: xUnit-нейминг и хелперы конфликтуют с частью правил ---
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none        # подчёркивания в именах тест-методов — идиома xUnit
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA2211.severity = none
+
+[*.cs]
+# === Временный baseline анализаторов (Фаза 0) ===================================
+# Анализаторы подключены (Directory.Build.props). Чтобы сборка оставалась 0/0 по
+# норме CLAUDE.md, текущий набор сработавших правил приглушён до suggestion —
+# видно в IDE как подсказки, но не ломает сборку. Фаза 4 поднимает их обратно
+# пачками (severity = warning) по мере чистки, затем включаем TreatWarningsAsErrors.
+#
+# Приоритет на разбор в Фазе 4 (это не стиль, а корректность):
+#   CA2020 — QuickPanelForm.cs:269, IntPtr→Int32 молча не бросает при переполнении
+#   CA1310 — StartsWith/сравнения без StringComparison
+#   CA1806 — проигнорированный результат P/Invoke (осознанная деградация — но сверить)
+
+dotnet_diagnostic.CA1051.severity = suggestion  # публичные instance-поля (намеренно в struct-DTO)
+dotnet_diagnostic.CA1805.severity = suggestion  # лишняя инициализация в default
+dotnet_diagnostic.CA1806.severity = suggestion  # проигнорированный HRESULT/код ошибки P/Invoke
+dotnet_diagnostic.CA1305.severity = suggestion  # IFormatProvider в форматировании
+dotnet_diagnostic.CA1310.severity = suggestion  # StringComparison в StartsWith/сравнениях
+dotnet_diagnostic.CA1822.severity = suggestion  # член можно сделать static
+dotnet_diagnostic.CA1838.severity = suggestion  # StringBuilder в P/Invoke
+dotnet_diagnostic.CA1839.severity = suggestion  # Environment.ProcessPath вместо GetCurrentProcess().MainModule
+dotnet_diagnostic.CA1859.severity = suggestion  # конкретные типы вместо интерфейсов (перф)
+dotnet_diagnostic.CA2020.severity = suggestion  # поведение IntPtr/UIntPtr операторов (.NET 7+)
+dotnet_diagnostic.CA2211.severity = suggestion  # видимые не-const static поля (напр. Loc.Current — уйдёт в Фазе 1)
+# ================================================================================

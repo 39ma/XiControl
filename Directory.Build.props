@@ -1,0 +1,29 @@
+<Project>
+
+  <!-- Единые свойства для всех проектов репозитория (src, tools, tests). -->
+  <!-- Фаза 0.2 плана. TreatWarningsAsErrors намеренно НЕ включён:            -->
+  <!-- сначала разгребаем предупреждения анализаторов пачками, только потом   -->
+  <!-- поднимаем планку (см. XiControl_improvement_plan.md, п.0.2).           -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Анализаторы: встроенные .NET + стиль в сборке -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Пока только собираем статистику предупреждений, не роняем сборку -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Практичные правила читаемости/упрощения. Шумный StyleCop пока не тащим. -->
+    <PackageReference Include="Roslynator.Analyzers" Version="4.12.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

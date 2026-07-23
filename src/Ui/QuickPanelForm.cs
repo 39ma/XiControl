@@ -44,14 +44,19 @@ public sealed class QuickPanelForm : FlyoutForm
     private Font CapFont => ScaledFonts.Get(DeviceDpi, "Segoe UI", 9f);
     private Font PillFont => ScaledFonts.Get(DeviceDpi, "Segoe UI Semibold", 11f);
 
-    /// <summary>Вызывается после смены режима из панели (трей обновляет значок).</summary>
-    public Action? Changed;
+    // Команды — в AppController: панель железо не пишет, только читает состояние для
+    // отрисовки. Обратная связь придёт колбэками контроллера через TrayApp (панель видима →
+    // RefreshUi), честная ошибка прошивки — OSD поверх (Фаза 6.2).
+    public Action<PerfMode>? SetMode;
+    public Action<bool>? SetCare;
+    public Action<bool>? SetTravel;
+    public Action? ToggleOwl;
+    public Action<bool>? SetAutoHz;
+    public Action? ToggleTouchpad;
+    public Action? ToggleTouchscreen;
 
     /// <summary>Кнопка-график слева от крестика: открыть окно «Монитор» (владелец — трей).</summary>
     public Action? MonitorRequested;
-
-    /// <summary>Панель переключила режим «В дорогу» — трей запускает/останавливает наблюдение за 100%.</summary>
-    public Action? TravelChanged;
 
     public QuickPanelForm(IMifsClient mifs, AppConfig cfg, TouchpadControl touchpad, TouchscreenControl touchscreen)
     {
@@ -273,74 +278,39 @@ public sealed class QuickPanelForm : FlyoutForm
         if (h == 14) { MonitorRequested?.Invoke(); return; }
         if (h >= 0 && h < _modes.Length)
         {
-            try { _mifs.SetPerfMode(_modes[h].mode); } catch { }
-            _cfg.RememberMode(_modes[h].mode);
-            RefreshState();
-            Invalidate();
-            Changed?.Invoke();
+            SetMode?.Invoke(_modes[h].mode);
         }
         else if (h == 10 || h == 11)
         {
-            bool on = h == 10;
-            bool wasTravel = _cfg.TravelMode;
-            _cfg.TravelMode = false; // явный выбор лимита отменяет «В дорогу»
-            try { _mifs.SetChargeCare(on); } catch { }
-            _cfg.ChargeCare = on; _cfg.Save();
-            RefreshState();
-            Invalidate();
-            if (wasTravel) TravelChanged?.Invoke(); // трей остановит наблюдение за 100%
+            SetCare?.Invoke(h == 10); // явный выбор лимита; отмену «в дорогу» делает контроллер
         }
         else if (h == 16)
         {
             if (!_cfg.ChargeCare) return; // при постоянном 100% ячейка неактивна
-            _cfg.TravelMode = !_cfg.TravelMode;
-            // вкл → снять защиту (заряд до 100); выкл → вернуть базовый режим (беречь 80)
-            try { _mifs.SetChargeCare(_cfg.TravelMode ? false : _cfg.ChargeCare); } catch { }
-            _cfg.Save();
-            RefreshState();
-            Invalidate();
-            TravelChanged?.Invoke();
+            SetTravel?.Invoke(!_cfg.TravelMode);
         }
         else if (h == 13)
         {
-            // «Не спать»: экран/сон + крышка на AC (см. AwakeMode)
-            if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
-            else if (AwakeMode.Enable(_cfg)) { _cfg.Awake = true; }
-            _cfg.Save();
-            Invalidate();
+            ToggleOwl?.Invoke(); // «Не спать»: экран/сон + крышка на AC (см. AwakeMode)
         }
         else if (h == 15)
         {
-            // авто-герцовка: вкл — сразу применить частоту по текущему питанию
-            _cfg.AutoRefreshRate = !_cfg.AutoRefreshRate;
-            _cfg.Save();
-            RefreshRate.ApplyForPower(_cfg);
-            Invalidate();
+            SetAutoHz?.Invoke(!_cfg.AutoRefreshRate); // вкл — контроллер сразу применит частоту
         }
         else if (h == 17 && !_tpCell.IsEmpty)
         {
-            // тачпад: CM-вызов небыстрый (отключение узла ~сотни мс) — в фоне;
-            // состояние переключаем оптимистично, колбэк уточнит фактическое
+            // CM-вызов небыстрый (сотни мс) — контроллер уйдёт в фон; состояние переключаем
+            // оптимистично, колбэк TouchpadToggled уточнит фактическое (через RefreshUi)
             _tpOn = !_tpOn;
             Invalidate();
-            Task.Run(() =>
-            {
-                var on = _tp.Toggle();
-                if (on is bool b && IsHandleCreated)
-                    BeginInvoke(() => { _tpOn = b; Invalidate(); });
-            });
+            ToggleTouchpad?.Invoke();
         }
         else if (h == 18 && !_tsCell.IsEmpty)
         {
-            // сенсорный экран: то же, что тачпад — оптимистичное переключение + фон
+            // сенсорный экран: то же оптимистичное переключение
             _tsOn = !_tsOn;
             Invalidate();
-            Task.Run(() =>
-            {
-                var on = _ts.Toggle();
-                if (on is bool b && IsHandleCreated)
-                    BeginInvoke(() => { _tsOn = b; Invalidate(); });
-            });
+            ToggleTouchscreen?.Invoke();
         }
     }
 

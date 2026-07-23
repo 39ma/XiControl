@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using XiControl.Ui;
 using XiControl.Wmi;
 using Xunit;
@@ -85,6 +85,20 @@ public sealed class TrayIconControllerTests
         _timer.Fire();
 
         _applied.Should().Equal((PerfMode.Turbo, false), (null, false));
+    }
+
+    [Fact]
+    public void Polled_FiresEveryRefresh_EvenWithoutModeChange()
+    {
+        var polled = new List<PerfMode?>();
+        _icon.Polled = polled.Add;
+        _mifs.Mode = PerfMode.Quiet;
+        _icon.Start();
+
+        _timer.Fire(); // режим не менялся: Apply молчит, но тултип должен обновиться
+
+        _applied.Should().HaveCount(1);
+        polled.Should().Equal(PerfMode.Quiet, PerfMode.Quiet);
     }
 
     [Fact]

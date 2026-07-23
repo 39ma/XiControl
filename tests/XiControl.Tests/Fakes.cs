@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using XiControl.SystemIntegration;
 using XiControl.Wmi;
 
@@ -12,6 +12,7 @@ internal sealed class FakeMifsClient : IMifsClient
     public bool SetPerfModeResult = true;
     public PerfMode? Mode;               // что вернёт GetPerfMode
     public bool ThrowOnGetPerfMode;      // симуляция недоступного железа
+    public bool ThrowOnSetChargeCare;    // симуляция отказа прошивки на запись
 
     /// <summary>Сигнал «SetPerfMode вызван» — для ожидания асинхронных Apply (Task.Run в guard-ах).</summary>
     public readonly SemaphoreSlim PerfModeHit = new(0);
@@ -27,7 +28,13 @@ internal sealed class FakeMifsClient : IMifsClient
     }
 
     public bool GetChargeCare() => false;
-    public void SetChargeCare(bool care) => ChargeCareCalls.Add(care);
+
+    public void SetChargeCare(bool care)
+    {
+        if (ThrowOnSetChargeCare) throw new InvalidOperationException("прошивка не ответила");
+        ChargeCareCalls.Add(care);
+    }
+
     public int GetAdapterWatts() => 0;
     public int? GetBatteryHealth() => null;
     public void Dispose() { }

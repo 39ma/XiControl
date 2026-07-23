@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using XiControl.Config;
 using XiControl.Localization;
 using XiControl.SystemIntegration;
@@ -175,6 +175,55 @@ public sealed class AppControllerTests
         _c.VisibleModes.Should().Equal(PerfMode.Quiet, PerfMode.Auto, PerfMode.Turbo, PerfMode.FullSpeed);
         _cfg.EcoMode.Should().BeFalse();
         _events.Should().Equal("modes-reloaded");
+    }
+
+    // ---- Честная обратная связь (Фаза 6.2): прошивка отказала → конфиг не трогаем,
+    // «успех» не показываем, UI получает FirmwareFailed ----
+
+    [Fact]
+    public void ToggleCare_FirmwareFailure_KeepsConfigAndReportsError()
+    {
+        bool failed = false;
+        _c.FirmwareFailed = () => failed = true;
+        _mifs.ThrowOnSetChargeCare = true;
+        _cfg.TravelMode = true;
+
+        _c.ToggleCare(true);
+
+        _cfg.ChargeCare.Should().BeFalse("состояние прошивки не изменилось — конфиг не трогаем");
+        _cfg.TravelMode.Should().BeTrue("«в дорогу» не отменяем, если команда не прошла");
+        _events.Should().BeEmpty("оптимистичный «успех» не показываем");
+        failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetTravel_FirmwareFailure_KeepsTravelOff()
+    {
+        bool failed = false;
+        _c.FirmwareFailed = () => failed = true;
+        _cfg.ChargeCare = true;
+        _mifs.ThrowOnSetChargeCare = true;
+
+        _c.SetTravel(true);
+
+        _cfg.TravelMode.Should().BeFalse();
+        _events.Should().BeEmpty();
+        failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetMode_FirmwareRejects_DoesNotRememberAndReportsError()
+    {
+        bool failed = false;
+        _c.FirmwareFailed = () => failed = true;
+        _mifs.SetPerfModeResult = false; // прошивка вернула отказ (напр. Full-speed на батарее)
+        _cfg.RestoreMode = true;
+
+        _c.SetMode(PerfMode.Turbo);
+
+        _cfg.StartPerfMode.Should().BeNull("непринятый режим не запоминаем");
+        _events.Should().BeEmpty();
+        failed.Should().BeTrue();
     }
 
     // ---- Стратегии старта ----

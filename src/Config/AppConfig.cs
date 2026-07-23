@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using XiControl.Localization;
 using XiControl.Wmi;
 
@@ -8,6 +8,10 @@ namespace XiControl.Config;
 public sealed class AppConfig
 {
     public Lang Language { get; set; } = Lang.Ru;
+
+    /// <summary>Одноразовая подсказка при первом запуске уже показана (balloon-tip трея).</summary>
+    public bool FirstRunShown { get; set; } = false;
+
     public bool ChargeCare { get; set; } = false;
     public bool AutoStart { get; set; } = false;
 

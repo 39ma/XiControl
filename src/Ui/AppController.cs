@@ -1,4 +1,4 @@
-using XiControl.Config;
+﻿using XiControl.Config;
 using XiControl.Localization;
 using XiControl.SystemIntegration;
 using XiControl.Wmi;
@@ -46,6 +46,7 @@ public sealed class AppController
     public Action? LanguageChanged;            // язык интерфейса сменился
     public Action<bool>? TouchpadToggled;      // тачпад вкл/выкл (колбэк с фонового потока!)
     public Action<bool>? TouchscreenToggled;   // сенсорный экран вкл/выкл (тоже фон)
+    public Action? FirmwareFailed;             // команда прошивке не прошла — UI показывает честную ошибку
 
     public AppController(IMifsClient mifs, AppConfig cfg, IPowerEvents power, ILocalizer loc,
         ChargeGuard charge, RefreshRateGuard hz, PowerProfileGuard profiles,
@@ -147,11 +148,13 @@ public sealed class AppController
     public void ToggleCharge()
         => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
 
-    /// <summary>Установить «беречь батарею». Ручная смена отменяет временный режим «В дорогу».</summary>
+    /// <summary>Установить «беречь батарею». Ручная смена отменяет временный режим «В дорогу».
+    /// Прошивка не приняла → конфиг не трогаем (реальное состояние не изменилось) и честно
+    /// сообщаем об ошибке вместо оптимистичного «успеха» (Фаза 6.2).</summary>
     public void ToggleCare(bool on)
     {
+        if (!Safe(() => { _mifs.SetChargeCare(on); return true; }, false)) { FirmwareFailed?.Invoke(); return; }
         if (_cfg.TravelMode) { _cfg.TravelMode = false; _travel.Rearm(); }
-        Safe(() => { _mifs.SetChargeCare(on); return true; }, false);
         _cfg.ChargeCare = on;
         _cfg.Save();
         CareChanged?.Invoke(on);
@@ -162,10 +165,12 @@ public sealed class AppController
     public void SetTravel(bool on)
     {
         if (on && !_cfg.ChargeCare) return;
+        // on → снять защиту (заряд до 100); off → вернуть базовый режим заряда.
+        // Сначала прошивка: не приняла → состояние не изменилось, конфиг не трогаем (6.2)
+        if (!Safe(() => { _mifs.SetChargeCare(on ? false : _cfg.ChargeCare); return true; }, false))
+        { FirmwareFailed?.Invoke(); return; }
         _cfg.TravelMode = on;
         _cfg.Save();
-        // on → снять защиту (заряд до 100); off → вернуть базовый режим заряда
-        Safe(() => { _mifs.SetChargeCare(on ? false : _cfg.ChargeCare); return true; }, false);
         _travel.Rearm();
         TravelChanged?.Invoke(on);
     }
@@ -181,10 +186,11 @@ public sealed class AppController
 
     // ---- Режимы производительности ----
 
-    /// <summary>Явный выбор режима (меню/настройки).</summary>
+    /// <summary>Явный выбор режима (меню/панель/настройки). Прошивка отказала (false или
+    /// исключение) → не запоминаем и честно сообщаем об ошибке (Фаза 6.2).</summary>
     public void SetMode(PerfMode mode)
     {
-        Safe(() => _mifs.SetPerfMode(mode), false);
+        if (!Safe(() => _mifs.SetPerfMode(mode), false)) { FirmwareFailed?.Invoke(); return; }
         _cfg.RememberMode(mode);
         ModeSet?.Invoke(mode);
     }
@@ -195,7 +201,7 @@ public sealed class AppController
         var cur = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null) ?? PerfMode.Auto;
         int idx = Array.IndexOf(_modes, cur);
         var next = _modes[(idx < 0 ? 0 : idx + 1) % _modes.Length];
-        Safe(() => _mifs.SetPerfMode(next), false);
+        if (!Safe(() => _mifs.SetPerfMode(next), false)) { FirmwareFailed?.Invoke(); return; }
         _cfg.RememberMode(next);
         ModeCycled?.Invoke(next);
     }

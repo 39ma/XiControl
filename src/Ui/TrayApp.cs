@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using XiControl.Config;
 using XiControl.Input;
 using XiControl.Localization;
@@ -62,9 +62,11 @@ public sealed class TrayApp : IDisposable
             ContextMenuStrip = _menu.Menu,
         };
         // контроллер решает «когда перерисовать», мы — «как» (рендер + NotifyIcon)
-        _icon.Apply = (mode, light) => { try { _tray.Icon = TrayIcons.ForMode(mode, light); } catch { } };
-        // Левый клик тоже открывает меню
-        _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) _menu.Show(_tray); };
+        _icon.Apply = (mode, light) => Safe(() => { _tray.Icon = TrayIcons.ForMode(mode, light); return true; }, false);
+        // живой тултип (имя • режим • заряд) — обновляется на каждом опросе значка
+        _icon.Polled = mode => Safe(() => { _tray.Text = TrayText(mode); return true; }, false);
+        // Левый клик — быстрая панель (богатый UI не прячем за аппаратной кнопкой); правый — меню
+        _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) _panel!.Toggle(); };
 
         // Профили питания: после применения режима обновить значок трея
         powerGuard.ModeApplied = () =>
@@ -84,11 +86,17 @@ public sealed class TrayApp : IDisposable
         _lastOnline = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
         SystemEvents.PowerModeChanged += OnPower;
 
-        // Панель по Mi-кнопке + слушатель клавиш прошивки
+        // Панель по Mi-кнопке + слушатель клавиш прошивки. Панель — чистый view:
+        // команды идут в контроллер, обратная связь — его колбэками ниже.
         _panel = new QuickPanelForm(_mifs, _cfg, touchpad, touchscreen);
-        _panel.Changed = () => _icon.Refresh();
         _panel.MonitorRequested = ShowMonitor;
-        _panel.TravelChanged = _travel.Rearm; // панель сама переключила режим — перевзвести наблюдение
+        _panel.SetMode = _controller.SetMode;
+        _panel.SetCare = _controller.ToggleCare;
+        _panel.SetTravel = _controller.SetTravel;
+        _panel.ToggleOwl = _controller.ToggleAwake;
+        _panel.SetAutoHz = _controller.ToggleAutoHz;
+        _panel.ToggleTouchpad = _controller.ToggleTouchpad;
+        _panel.ToggleTouchscreen = _controller.ToggleTouchscreen;
 
         // Уведомления контроллера → обратная связь UI: панель открыта — обновляется она,
         // иначе OSD; значок обновляем после смены режима. Сама логика — в AppController.
@@ -107,7 +115,8 @@ public sealed class TrayApp : IDisposable
         _controller.TravelCancelled = () => { if (_panel.Visible) _panel.RefreshUi(); };
         _controller.ModeSet = m =>
         {
-            _osd.Flash(ModeUi.Kind(m), Loc.T(ModeUi.Key(m) ?? "mode.auto"));
+            if (_panel.Visible) _panel.RefreshUi(); // выбор сделан в панели — OSD поверх не нужен
+            else _osd.Flash(ModeUi.Kind(m), Loc.T(ModeUi.Key(m) ?? "mode.auto"));
             _icon.Refresh();
         };
         _controller.ModeCycled = m =>
@@ -127,7 +136,9 @@ public sealed class TrayApp : IDisposable
         };
         _controller.OwlFeatureChanged = _panel.ReloadModes; // сова появляется/уходит из раскладки
         _controller.AwakeChanged = () => { if (_panel.Visible) _panel.RefreshUi(); };
-        _controller.LanguageChanged = () => _tray.Text = Loc.T("app.name");
+        _controller.LanguageChanged = () => _icon.Refresh(); // Polled обновит тултип на новом языке
+        // честная обратная связь: команда прошивке не прошла — говорим прямо, а не «успех»
+        _controller.FirmwareFailed = () => _osd.Flash(OsdKind.Error, Loc.T("osd.failed"), Loc.T("osd.failed.sub"));
         // тачпад/экран: колбэк приходит с фонового потока — маршалим в UI
         _controller.TouchpadToggled = b => _osd.BeginInvoke(new Action(() =>
         {
@@ -194,6 +205,25 @@ public sealed class TrayApp : IDisposable
         // этого показ закрывается сразу. Делаем это сами на первом холостом ходу цикла
         // сообщений, за экраном и с мгновенным закрытием — пользователь ничего не видит.
         _osd.BeginInvoke(new Action(_menu.Prime));
+
+        // Одноразовая подсказка первого запуска: как открыть панель и меню — иначе
+        // самая богатая поверхность (QuickPanel) остаётся спрятанной за Mi-кнопкой
+        if (!_cfg.FirstRunShown)
+        {
+            _cfg.FirstRunShown = true;
+            _cfg.Save();
+            _tray.ShowBalloonTip(10000, Loc.T("toast.firstrun.title"), Loc.T("toast.firstrun.text"), ToolTipIcon.None);
+        }
+    }
+
+    // Тултип трея: имя • режим • заряд (NotifyIcon.Text ограничен 127 символами).
+    private static string TrayText(PerfMode? mode)
+    {
+        string s = Loc.T("app.name");
+        if (mode is PerfMode m && ModeUi.Key(m) is string key) s += " • " + Loc.T(key);
+        float f = SystemInformation.PowerStatus.BatteryLifePercent;
+        if (f is >= 0f and <= 1f) s += $" • {(int)Math.Round(f * 100)}%";
+        return s.Length <= 127 ? s : s[..127];
     }
 
     private void OnUserPref(object? sender, UserPreferenceChangedEventArgs e)

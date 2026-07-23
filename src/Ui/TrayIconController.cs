@@ -1,4 +1,4 @@
-using XiControl.SystemIntegration;
+﻿using XiControl.SystemIntegration;
 using XiControl.Wmi;
 
 namespace XiControl.Ui;
@@ -19,6 +19,10 @@ public sealed class TrayIconController : IDisposable
 
     /// <summary>Отрисовать и применить значок (режим, светлая панель задач).</summary>
     public Action<PerfMode?, bool>? Apply;
+
+    /// <summary>Каждый опрос, даже без смены режима — для живого тултипа трея
+    /// (заряд батареи меняется независимо от режима).</summary>
+    public Action<PerfMode?>? Polled;
 
     /// <summary>Светлая ли панель задач — сидка системного запроса (Theme.TaskbarIsLight).</summary>
     public Func<bool> LightTaskbar = Theme.TaskbarIsLight;
@@ -45,6 +49,7 @@ public sealed class TrayIconController : IDisposable
         PerfMode? mode;
         try { mode = _mifs.GetPerfMode(); }
         catch (Exception ex) { Log.Ex("TrayIconController.Refresh", ex); mode = null; }
+        Polled?.Invoke(mode); // тултип живёт на каждом опросе, значок — только на изменениях
         if (!force && _init && mode == _mode) return; // без изменений — не трогаем
         _init = true;
         _mode = mode;

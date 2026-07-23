@@ -20,7 +20,7 @@ public sealed class PowerProfileGuard : IDisposable
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
     private readonly IPowerEvents _power;
-    private readonly System.Windows.Forms.Timer _debounce;
+    private readonly IAppTimer _debounce;
     private readonly BrightnessWatcher _brightness = new();
     private readonly System.Threading.Timer _save;
     private readonly object _lock = new();
@@ -29,14 +29,15 @@ public sealed class PowerProfileGuard : IDisposable
     /// <summary>Вызывается (на потоке пула) после применения режима — обновить значок трея.</summary>
     public Action? ModeApplied;
 
-    public PowerProfileGuard(IMifsClient mifs, AppConfig cfg, IPowerEvents power)
+    public PowerProfileGuard(IMifsClient mifs, AppConfig cfg, IPowerEvents power, IAppTimer? debounce = null)
     {
         _mifs = mifs;
         _cfg = cfg;
         _power = power;
 
-        _debounce = new System.Windows.Forms.Timer { Interval = DebounceMs };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); Apply(); };
+        _debounce = debounce ?? new UiTimer();
+        _debounce.Interval = DebounceMs;
+        _debounce.Tick += () => { _debounce.Stop(); Apply(); };
 
         _save = new System.Threading.Timer(_ => { lock (_lock) _cfg.Save(); });
 

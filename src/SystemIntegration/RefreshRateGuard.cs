@@ -12,15 +12,16 @@ public sealed class RefreshRateGuard : IDisposable
 {
     private readonly AppConfig _cfg;
     private readonly IPowerEvents _power;
-    private readonly System.Windows.Forms.Timer _debounce;
+    private readonly IAppTimer _debounce;
 
-    public RefreshRateGuard(AppConfig cfg, IPowerEvents power)
+    public RefreshRateGuard(AppConfig cfg, IPowerEvents power, IAppTimer? debounce = null)
     {
         _cfg = cfg;
         _power = power;
 
-        _debounce = new System.Windows.Forms.Timer { Interval = 1500 };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); Reapply(); };
+        _debounce = debounce ?? new UiTimer();
+        _debounce.Interval = 1500;
+        _debounce.Tick += () => { _debounce.Stop(); Reapply(); };
 
         _power.PowerModeChanged += OnPowerModeChanged;
     }

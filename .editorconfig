@@ -42,6 +42,7 @@ dotnet_diagnostic.CA2007.severity = none
 dotnet_diagnostic.CA1707.severity = none        # подчёркивания в именах тест-методов — идиома xUnit
 dotnet_diagnostic.CA1051.severity = none
 dotnet_diagnostic.CA2211.severity = none
+dotnet_diagnostic.CA1001.severity = none        # тест-классы держат фейки/семафоры без IDisposable — xUnit создаёт экземпляр на тест
 
 [*.cs]
 # === Временный baseline анализаторов (Фаза 0) ===================================
@@ -66,4 +67,5 @@ dotnet_diagnostic.CA1839.severity = suggestion  # Environment.ProcessPath вме
 dotnet_diagnostic.CA1859.severity = suggestion  # конкретные типы вместо интерфейсов (перф)
 dotnet_diagnostic.CA2020.severity = suggestion  # поведение IntPtr/UIntPtr операторов (.NET 7+)
 dotnet_diagnostic.CA2211.severity = suggestion  # видимые не-const static поля (напр. Loc.Current — уйдёт в Фазе 1)
+dotnet_diagnostic.CA1716.severity = suggestion  # имена типа Stop/интерфейсов vs VB-ключевые слова — VB-совместимость не нужна
 # ================================================================================

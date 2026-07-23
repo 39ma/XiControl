@@ -17,17 +17,18 @@ public sealed class ChargeGuard : IDisposable
     private readonly IMifsClient _mifs;
     private readonly IPowerEvents _power;
     private readonly Func<bool> _careWanted;   // желаемое состояние (из настроек/UI)
-    private readonly System.Windows.Forms.Timer _debounce;
+    private readonly IAppTimer _debounce;
 
-    public ChargeGuard(IMifsClient mifs, IPowerEvents power, Func<bool> careWanted)
+    public ChargeGuard(IMifsClient mifs, IPowerEvents power, Func<bool> careWanted, IAppTimer? debounce = null)
     {
         _mifs = mifs;
         _power = power;
         _careWanted = careWanted;
 
         // события StatusChange могут сыпаться пачкой — гасим дребезг
-        _debounce = new System.Windows.Forms.Timer { Interval = 1500 };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); Reapply(); };
+        _debounce = debounce ?? new UiTimer();
+        _debounce.Interval = 1500;
+        _debounce.Tick += () => { _debounce.Stop(); Reapply(); };
 
         _power.PowerModeChanged += OnPowerModeChanged;
         _power.SessionEnding += OnSessionEnding;

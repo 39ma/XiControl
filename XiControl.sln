@@ -1,0 +1,42 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XiControl", "src\XiControl.csproj", "{30FFBC09-DE0E-48CE-BE16-33D546D3E4F9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{5CA1AA0F-8F85-41DA-92A1-FAA68DB43696}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconPreview", "tools\IconPreview\IconPreview.csproj", "{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{C3AC061D-C280-45BF-A680-F8FE88891334}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XiControl.Tests", "tests\XiControl.Tests\XiControl.Tests.csproj", "{2313332E-57A9-444F-99E9-B0432170941F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{30FFBC09-DE0E-48CE-BE16-33D546D3E4F9}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{30FFBC09-DE0E-48CE-BE16-33D546D3E4F9}.Debug|Any CPU.Build.0 = Debug|x64
+		{30FFBC09-DE0E-48CE-BE16-33D546D3E4F9}.Release|Any CPU.ActiveCfg = Release|x64
+		{30FFBC09-DE0E-48CE-BE16-33D546D3E4F9}.Release|Any CPU.Build.0 = Release|x64
+		{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2313332E-57A9-444F-99E9-B0432170941F}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{2313332E-57A9-444F-99E9-B0432170941F}.Debug|Any CPU.Build.0 = Debug|x64
+		{2313332E-57A9-444F-99E9-B0432170941F}.Release|Any CPU.ActiveCfg = Release|x64
+		{2313332E-57A9-444F-99E9-B0432170941F}.Release|Any CPU.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7499C6BD-92E5-4209-84D4-8CFDC1F53C1C} = {5CA1AA0F-8F85-41DA-92A1-FAA68DB43696}
+		{2313332E-57A9-444F-99E9-B0432170941F} = {C3AC061D-C280-45BF-A680-F8FE88891334}
+	EndGlobalSection
+EndGlobal

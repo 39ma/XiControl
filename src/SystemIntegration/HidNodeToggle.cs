@@ -125,7 +125,11 @@ public abstract class HidNodeToggle
         {
             // узел убран query-remove'ом — вернёт только пересканирование шины
             Log.Write($"{LogName}: включаю пересканированием устройств (как «Обновить конфигурацию»)");
-            if (CM_Locate_DevNode(out uint root, null, 0) == 0) CM_Reenumerate_DevNode(root, 0);
+            if (CM_Locate_DevNode(out uint root, null, 0) == 0)
+            {
+                int cr2 = CM_Reenumerate_DevNode(root, 0);
+                if (cr2 != 0) Log.Write($"{LogName}: CM_Reenumerate_DevNode → CR 0x{cr2:X}");
+            }
             ok = WaitState(enabled: true);
         }
         if (ok && PersistOff) { PersistOff = false; SaveConfig(); }
@@ -202,10 +206,11 @@ public abstract class HidNodeToggle
                 if (CM_Get_Parent(out uint parent, info.DevInst, 0) != 0) continue;
 
                 // запомнить ID родителя — иначе после перезапуска выключенное устройство не найти
-                var sb = new StringBuilder(256);
-                if (CM_Get_Device_ID(parent, sb, sb.Capacity, 0) == 0)
+                var idBuf = new char[256]; // char-буфер вместо StringBuilder (CA1838: без лишнего маршалинга)
+                if (CM_Get_Device_ID(parent, idBuf, idBuf.Length, 0) == 0)
                 {
-                    string id = sb.ToString();
+                    int len = Array.IndexOf(idBuf, '\0') is int z && z >= 0 ? z : idBuf.Length;
+                    string id = new(idBuf, 0, len);
                     if (!string.Equals(DeviceId, id, StringComparison.OrdinalIgnoreCase))
                     {
                         DeviceId = id;
@@ -305,7 +310,7 @@ public abstract class HidNodeToggle
     private static extern int CM_Get_Parent(out uint parentDevInst, uint devInst, uint flags);
 
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
-    private static extern int CM_Get_Device_ID(uint devInst, StringBuilder buffer, int bufferLen, uint flags);
+    private static extern int CM_Get_Device_ID(uint devInst, [Out] char[] buffer, int bufferLen, uint flags);
 
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
     private static extern int CM_Locate_DevNode(out uint devInst, string? deviceId, uint flags);

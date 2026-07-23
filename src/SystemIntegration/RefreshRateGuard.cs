@@ -11,22 +11,25 @@ namespace XiControl.SystemIntegration;
 public sealed class RefreshRateGuard : IDisposable
 {
     private readonly AppConfig _cfg;
-    private readonly System.Windows.Forms.Timer _debounce;
+    private readonly IPowerEvents _power;
+    private readonly IAppTimer _debounce;
 
-    public RefreshRateGuard(AppConfig cfg)
+    public RefreshRateGuard(AppConfig cfg, IPowerEvents power, IAppTimer? debounce = null)
     {
         _cfg = cfg;
+        _power = power;
 
-        _debounce = new System.Windows.Forms.Timer { Interval = 1500 };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); Reapply(); };
+        _debounce = debounce ?? new UiTimer();
+        _debounce.Interval = 1500;
+        _debounce.Tick += () => { _debounce.Stop(); Reapply(); };
 
-        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        _power.PowerModeChanged += OnPowerModeChanged;
     }
 
-    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    private void OnPowerModeChanged(PowerModes mode)
     {
         // Resume — выход из сна; StatusChange — смена питания AC↔батарея
-        if (e.Mode is PowerModes.Resume or PowerModes.StatusChange)
+        if (mode is PowerModes.Resume or PowerModes.StatusChange)
         {
             _debounce.Stop();
             _debounce.Start();
@@ -38,7 +41,7 @@ public sealed class RefreshRateGuard : IDisposable
 
     public void Dispose()
     {
-        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _power.PowerModeChanged -= OnPowerModeChanged;
         _debounce.Dispose();
     }
 }

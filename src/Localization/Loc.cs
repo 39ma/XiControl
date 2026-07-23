@@ -5,7 +5,7 @@ public enum Lang { Ru = 0, En = 1, Zh = 2 }
 /// <summary>Простая локализация RU/EN/ZH. Ключ → [ru, en, zh].</summary>
 public static class Loc
 {
-    public static Lang Current = Lang.Ru;
+    public static Lang Current { get; set; } = Lang.Ru;
 
     private static readonly Dictionary<string, string[]> S = new()
     {
@@ -192,6 +192,17 @@ public static class Loc
         ["osd.fnlock.on"]        = ["Классические F1–F12", "Function keys F1–F12", "F1–F12 功能键"],
         ["osd.fnlock.off"]       = ["Мультимедийные клавиши", "Media keys", "多媒体按键"],
 
+        // честная обратная связь: команда прошивке не прошла (Фаза 6.2)
+        ["osd.failed"]     = ["Не сработало", "Didn't work", "操作失败"],
+        ["osd.failed.sub"] = ["Прошивка не ответила — детали в логе", "Firmware didn't respond — see log", "固件未响应 — 详见日志"],
+
+        // одноразовая подсказка при первом запуске (Фаза 6.1)
+        ["toast.firstrun.title"] = ["XiControl работает в трее", "XiControl is running in the tray", "XiControl 正在系统托盘中运行"],
+        ["toast.firstrun.text"]  = [
+            "Клик по значку — быстрая панель, правый клик — меню. Удержание кнопки Mi тоже открывает панель.",
+            "Click the tray icon for the quick panel, right-click for the menu. Holding the Mi button also opens the panel.",
+            "点击托盘图标打开快捷面板，右键打开菜单。长按 Mi 键也可打开面板。"],
+
         ["err.title"]   = ["Ошибка", "Error", "错误"],
         ["err.noiface"] = [
             "Интерфейс MIFS не найден. Нужны права администратора и совместимый ноутбук Xiaomi/Redmi.",
@@ -203,5 +214,5 @@ public static class Loc
         => S.TryGetValue(key, out var v) ? v[(int)Current] : key;
 
     public static string T(string key, params object[] args)
-        => string.Format(T(key), args);
+        => string.Format(System.Globalization.CultureInfo.CurrentCulture, T(key), args); // числа — в формате локали пользователя
 }

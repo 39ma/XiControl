@@ -8,7 +8,7 @@ namespace XiControl.Wmi;
 /// подписчик сам маршалит в UI-поток. Переживает рестарт WMI-сервиса: при обрыве
 /// потока событий переподключается с задержкой.
 /// </summary>
-public sealed class MifsEventWatcher : IDisposable
+public sealed class MifsEventWatcher : IKeyEventSource
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
@@ -68,7 +68,7 @@ public sealed class MifsEventWatcher : IDisposable
     {
         _disposed = true;
         _retry.Dispose();
-        try { _watcher.Stop(); } catch { }
+        try { _watcher.Stop(); } catch { /* WMI мог уже умереть при выходе — не критично */ }
         _watcher.Dispose();
     }
 }

@@ -35,13 +35,15 @@ public sealed class MicControl : IDisposable
 
     public void SetMute(bool mute)
     {
-        try { _vol?.SetMute(mute, IntPtr.Zero); } catch { }
+        try { _vol?.SetMute(mute, IntPtr.Zero); }
+        catch (Exception ex) { Log.Ex("MicControl.SetMute", ex); } // мьют не применился — это стоит видеть в логе
     }
 
     public bool? GetMute()
     {
         if (_vol == null) return null;
-        try { return _vol.GetMute(out bool m) == 0 ? m : null; } catch { return null; }
+        try { return _vol.GetMute(out bool m) == 0 ? m : null; }
+        catch (Exception ex) { Log.Ex("MicControl.GetMute", ex); return null; }
     }
 
     public void Dispose()
@@ -51,24 +53,24 @@ public sealed class MicControl : IDisposable
 }
 
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-class MMDeviceEnumerator { }
+internal class MMDeviceEnumerator { }
 
 [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDeviceEnumerator
+internal interface IMMDeviceEnumerator
 {
     int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr ppDevices); // слот 0 (не используем)
     int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice); // слот 1
 }
 
 [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDevice
+internal interface IMMDevice
 {
     int Activate(ref Guid iid, int clsCtx, IntPtr activationParams,
                  [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface); // слот 0
 }
 
 [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IAudioEndpointVolume
+internal interface IAudioEndpointVolume
 {
     int f0(); int f1(); int f2(); int f3(); int f4(); int f5();
     int f6(); int f7(); int f8(); int f9(); int f10();                 // слоты 0..10 (не используем)

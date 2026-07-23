@@ -58,7 +58,7 @@ public static class AutoStart
             return Run("/create", "/tn", TaskName, "/xml", tmp, "/f") == 0;
         }
         catch (Exception ex) { Log.Ex("AutoStart.Enable", ex); return false; }
-        finally { try { File.Delete(tmp); } catch { } }
+        finally { try { File.Delete(tmp); } catch { /* tmp занят/уже удалён — не критично */ } }
     }
 
     private static bool Disable() => Run("/delete", "/tn", TaskName, "/f") == 0;
@@ -116,7 +116,7 @@ public static class AutoStart
 
     private static string BuildXml()
     {
-        string exe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName;
+        string exe = Environment.ProcessPath!; // у обычного exe-процесса путь есть всегда
         string user = WindowsIdentity.GetCurrent().Name; // DOMAIN\User
         string exeX = SecurityElement.Escape(exe)!;
         string userX = SecurityElement.Escape(user)!;

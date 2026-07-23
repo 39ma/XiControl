@@ -1,0 +1,27 @@
+<Project>
+
+  <!-- Единые свойства для всех проектов репозитория (src, tools, tests). -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Анализаторы: встроенные .NET + стиль в сборке -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Фаза 4: baseline анализаторов разобран (осознанные исключения — в .editorconfig
+         с обоснованием), с этого момента любое предупреждение роняет сборку -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Практичные правила читаемости/упрощения. Шумный StyleCop пока не тащим. -->
+    <PackageReference Include="Roslynator.Analyzers" Version="4.12.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

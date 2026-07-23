@@ -15,7 +15,7 @@ public sealed class MifsResult
 /// Тонкая обёртка над WMI-методом MiCommonInterface.MiInterface.
 /// Требует прав администратора (проверено). Бросает при отсутствии интерфейса.
 /// </summary>
-public sealed class MifsClient : IDisposable
+public sealed class MifsClient : IMifsClient
 {
     private readonly ManagementObject _inst;
     private readonly object _lock = new();   // сериализуем вызовы (UI + события питания)

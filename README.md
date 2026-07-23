@@ -129,8 +129,9 @@ Get-CimClass -Namespace root/wmi -ClassName MiCommonInterface
 Сборка из исходников:
 
 ```powershell
-dotnet build src/XiControl.csproj -c Release
-# → src/bin/Release/net8.0-windows/XiControl.exe
+dotnet build XiControl.sln -c Release
+# → src/bin/x64/Release/net8.0-windows/XiControl.exe
+dotnet test XiControl.sln -c Release --no-build   # юнит-тесты (железо не требуется)
 ```
 
 Один переносимый .exe (без установленного .NET):
@@ -145,7 +146,8 @@ dotnet publish src/XiControl.csproj -c Release -r win-x64 --self-contained -p:Pu
 
 | Действие | Результат |
 |----------|-----------|
-| Клик по значку (любой кнопкой) | Меню: заряд, «В дорогу», сова, авто-герцовка, «Монитор», режим, «Настройки…», выход |
+| Клик по значку в трее | Панель быстрых настроек |
+| Правый клик по значку | Меню: заряд, «В дорогу», сова, авто-герцовка, «Монитор», режим, «Настройки…», выход |
 | Mi-кнопка, одинарный клик | Следующий режим производительности + OSD *(настраивается)* |
 | Mi-кнопка, двойной клик | Переключение лимита заряда 80% ↔ 100% + OSD *(настраивается)* |
 | Mi-кнопка, удержание ~0.5 с | Панель быстрых настроек |
@@ -348,12 +350,18 @@ dotnet publish src/XiControl.csproj -c Release -r win-x64 --self-contained -p:Pu
 ## Разработка
 
 ```
-src/            приложение (C# / .NET 8 / WinForms)
+src/            приложение (C# / .NET 8 / WinForms): Wmi/ — протокол MIFS, Input/ — клавиши
+                и жесты, Ui/ — трей, панель, OSD, монитор, настройки (Ui/Settings/ — вкладки),
+                SystemIntegration/ — guard-ы, питание, тачпад/экран, Config/, Localization/
+tests/          юнит-тесты (xUnit) чистой логики на фейках — гоняются без железа Xiaomi
 assets/svg/     иконки: osd/ — цветные 128×128, tray/ — монохром 24×24 (currentColor)
 tools/IconPreview/  рендер иконок в PNG для проверки + генерация app.ico
 docs/           документация протокола и архитектуры
 reference/      PowerShell-пробы, журналы исследования прошивки
 ```
+
+Как устроен код (командный слой, швы для тестов, guard-паттерн) — [CLAUDE.md](CLAUDE.md),
+как контрибьютить — [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Диагностика: ошибки пишутся в `%APPDATA%\XiControl\log.txt`.
 
@@ -383,4 +391,4 @@ Bitland "MIFS") — **no WinRing0, no third-party drivers**. Requires Windows 10
 and administrator rights (a firmware WMI requirement). UI is available in English.
 
 Check compatibility: `Get-CimClass -Namespace root/wmi -ClassName MiCommonInterface`.
-Build: `dotnet build src/XiControl.csproj -c Release`. License: GPL-3.0.
+Build: `dotnet build XiControl.sln -c Release`. License: GPL-3.0.

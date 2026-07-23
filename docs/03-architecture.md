@@ -98,19 +98,35 @@
 
 Планировали компактно; разрослось (панель, «Монитор», окно настроек, гарды, тачпад/экран,
 здоровье батареи), но структура та же: WMI-обёртка + UI + системная интеграция, **без службы**.
-Полное описание модулей — в CLAUDE.md «Архитектура»; коротко:
+В 2026-07 проведён рефакторинг (ветка `refactor`): DI-контейнер в Program, командный слой
+`AppController`, god-классы TrayApp/SettingsForm разобраны по швам, добавлены юнит-тесты и
+жёсткие анализаторы (`TreatWarningsAsErrors`). Полное описание модулей — в CLAUDE.md
+«Архитектура»; коротко:
 
 ```
-xi_control/                 (переехал из docs-каталога в корень своего репо — как и планировали)
- ├─ Program.cs              — вход, single-instance mutex, MifsClient → TrayApp
- ├─ Wmi/                    — Mifs.cs (константы протокола), MifsClient, MifsEventWatcher
- ├─ Ui/                     — TrayApp (центральный узел), OsdForm, QuickPanelForm, MonitorForm,
- │                            SettingsForm, ScaledFonts, SvgIcons, Draw, TrayIcons, DarkMenu, ToggleSwitch
- ├─ SystemIntegration/      — ChargeGuard, RefreshRate(+Guard), PowerProfileGuard, Brightness,
- │                            TouchpadControl/TouchscreenControl (общий HidNodeToggle), AwakeMode,
- │                            MicControl, KeyActions, AutoStart, Sound, BatteryInfo, PowerDraw
- ├─ Config/AppConfig.cs     — config.json + миграции
- └─ Localization/Loc.cs     — RU/EN/ZH
+xi_control/
+ ├─ XiControl.sln           — src + tests + tools; сборка: dotnet build XiControl.sln -c Release
+ ├─ src/
+ │   ├─ Program.cs          — вход: single-instance mutex → DI (MS.DI, все синглтоны,
+ │   │                         провайдер владеет Dispose) → TrayApp.Start → Application.Run
+ │   ├─ Wmi/                — Mifs.cs (константы протокола), IMifsClient/MifsClient,
+ │   │                         IKeyEventSource/MifsEventWatcher
+ │   ├─ Input/              — MiButtonGesture (жесты Mi-кнопки), KeyRouter (клавиша → действие)
+ │   ├─ Ui/                 — AppController (командный слой — все Set*/Toggle*, честные ошибки),
+ │   │                         TrayApp (тонкий монтажник), TrayMenuBuilder, TrayIconController,
+ │   │                         QuickPanelForm, OsdForm, MonitorForm, FlyoutForm(+FlyoutPalette),
+ │   │                         FormChrome, ModeUi, SettingsForm, SettingsActions, ToggleSwitch,
+ │   │                         ScaledFonts, SvgIcons, Draw, TrayIcons, DarkMenu
+ │   ├─ Ui/Settings/        — SettingsToolkit (фабрика виджетов), SettingsTheme, NavStrip,
+ │   │                         вкладки-контролы General/Battery/Display/Perf/Keys/AboutTab
+ │   ├─ SystemIntegration/  — ChargeGuard, RefreshRate(+Guard), PowerProfileGuard,
+ │   │                         TravelChargeMonitor, IPowerEvents/SystemPowerEvents,
+ │   │                         IAppTimer/UiTimer, Brightness, TouchpadControl/TouchscreenControl
+ │   │                         (общий HidNodeToggle), AwakeMode, MicControl, KeyActions,
+ │   │                         AutoStart, Sound, BatteryInfo, PowerDraw
+ │   ├─ Config/             — AppConfig (POCO + миграции), IConfigStore/JsonConfigStore
+ │   └─ Localization/       — Loc.cs RU/EN/ZH (+ ILocalizer)
+ └─ tests/XiControl.Tests/  — юнит-тесты чистой логики на фейках (Fakes.cs), без железа
 ```
 
 ---

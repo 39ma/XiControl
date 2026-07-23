@@ -20,7 +20,7 @@ public static class Brightness
                 "SELECT CurrentBrightness FROM WmiMonitorBrightness");
             foreach (ManagementObject mo in s.Get())
                 using (mo)
-                    return Convert.ToInt32(mo["CurrentBrightness"]);
+                    return Convert.ToInt32(mo["CurrentBrightness"], System.Globalization.CultureInfo.InvariantCulture);
         }
         catch (Exception ex) { Log.Ex("Brightness.Get", ex); }
         return null;
@@ -112,7 +112,7 @@ public sealed class BrightnessWatcher : IDisposable
     {
         try
         {
-            if (e.NewEvent["Brightness"] is { } v) Changed?.Invoke(Convert.ToInt32(v));
+            if (e.NewEvent["Brightness"] is { } v) Changed?.Invoke(Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture));
         }
         catch { /* игнор битых событий */ }
     }
@@ -121,7 +121,7 @@ public sealed class BrightnessWatcher : IDisposable
     {
         _disposed = true;
         _retry.Dispose();
-        try { _watcher.Stop(); } catch { }
+        try { _watcher.Stop(); } catch { /* WMI мог уже умереть при выходе — не критично */ }
         _watcher.Dispose();
     }
 }

@@ -1,0 +1,59 @@
+root = true
+
+# XiControl — единый стиль кода. Минимальный старт по плану (Фаза 0.3),
+# расширяется по мере разгребания предупреждений (Фаза 4).
+
+[*]
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8-bom
+
+[*.{yml,yaml,json,jsonc}]
+indent_size = 2
+
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+end_of_line = crlf
+
+# --- организация using-директив ---
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# --- стиль неймспейсов и модификаторов (Фаза 4: file-scoped namespaces) ---
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+
+# --- современный C# ---
+csharp_prefer_braces = true:silent
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+
+# --- приглушённые правила ---
+# ConfigureAwait в UI-приложении (единственный UI-контекст) не нужен
+dotnet_diagnostic.CA2007.severity = none
+
+# --- тесты: xUnit-нейминг и хелперы конфликтуют с частью правил ---
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none        # подчёркивания в именах тест-методов — идиома xUnit
+dotnet_diagnostic.CA1051.severity = none
+dotnet_diagnostic.CA2211.severity = none
+dotnet_diagnostic.CA1001.severity = none        # тест-классы держат фейки/семафоры без IDisposable — xUnit создаёт экземпляр на тест
+
+[*.cs]
+# === Осознанно отключённые правила (Фаза 4: baseline разобран, остальное — warning) ==
+# CA1051 — публичные поля намеренно: идиома проекта «сумка колбэков» (public Action?,
+#          образец — SettingsActions) + readonly-палитры/DTO. Это приложение, а не
+#          библиотека — внешних потребителей у типов нет, свойства дали бы только шум.
+dotnet_diagnostic.CA1051.severity = none
+# CA1805 — явные "= false" в AppConfig документируют дефолты config.json; читаемость
+#          конфига важнее микрооптимизации инициализации.
+dotnet_diagnostic.CA1805.severity = none
+# CA1716 — имена вроде IAppTimer.Stop() конфликтуют только с VB-ключевыми словами;
+#          VB-потребителей нет и не будет.
+dotnet_diagnostic.CA1716.severity = none
+# =====================================================================================

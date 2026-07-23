@@ -14,17 +14,14 @@ public sealed class TrayApp : IDisposable
     private readonly ContextMenuStrip _menu;
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
-    private readonly TouchpadControl _touchpad;
-    private readonly TouchscreenControl _touchscreen;
     private bool _dark = Theme.IsDark();
-    private readonly ChargeGuard _guard;
-    private readonly RefreshRateGuard _hzGuard;
-    private readonly PowerProfileGuard _powerGuard;
     private readonly OsdForm _osd = new();
     private readonly IKeyEventSource _events;
     private readonly QuickPanelForm _panel;
-    private bool _autoStart;   // кэш состояния автозапуска (не дёргаем schtasks на каждое меню)
     private bool _lastOnline;  // прошлое состояние питания (для OSD только на реальном переходе)
+
+    // командный слой: все Set*/Toggle* и стартовая логика — в AppController
+    private readonly AppController _controller;
 
     // политика обновления значка (опрос/кэш/тема) — вынесена в TrayIconController
     private readonly TrayIconController _icon;
@@ -36,37 +33,18 @@ public sealed class TrayApp : IDisposable
     private readonly MiButtonGesture _mi;
     private readonly KeyRouter _router;
 
-    private static readonly (string key, PerfMode mode)[] Modes =
-    [
-        ("mode.eco",   PerfMode.Eco),
-        ("mode.quiet", PerfMode.Quiet),
-        ("mode.auto",  PerfMode.Auto),
-        ("mode.turbo", PerfMode.Turbo),
-        ("mode.full",  PerfMode.FullSpeed),
-    ];
-
-    // видимые режимы (Эко/Полная мощность скрываются в Настройках или config.json)
-    private (string key, PerfMode mode)[] _modes = [];
-    private PerfMode[] _cycle = []; // порядок цикла Mi-кнопки — по нарастанию мощности
-
     // Конструктор только сохраняет зависимости и монтирует UI-каркас (меню, значок,
-    // панель, подписки). Стартовая бизнес-логика — в Start(), её зовёт Program.Main.
+    // панель, подписки, колбэки контроллера). Стартовая бизнес-логика — в Start().
     public TrayApp(IMifsClient mifs, AppConfig cfg, IKeyEventSource events,
-        ChargeGuard guard, RefreshRateGuard hzGuard, PowerProfileGuard powerGuard,
-        TouchpadControl touchpad, TouchscreenControl touchscreen, TravelChargeMonitor travel,
-        TrayIconController icon)
+        PowerProfileGuard powerGuard, TouchpadControl touchpad, TouchscreenControl touchscreen,
+        TravelChargeMonitor travel, TrayIconController icon, AppController controller)
     {
         _mifs = mifs;
         _cfg = cfg;
         _events = events;
-        _guard = guard;
-        _hzGuard = hzGuard;
-        _powerGuard = powerGuard;
-        _touchpad = touchpad;
-        _touchscreen = touchscreen;
         _travel = travel;
         _icon = icon;
-        ApplyModeVisibility();
+        _controller = controller;
 
         _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
         _menu.Opening += (_, _) => BuildMenu();
@@ -85,7 +63,7 @@ public sealed class TrayApp : IDisposable
         _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(); };
 
         // Профили питания: после применения режима обновить значок трея
-        _powerGuard.ModeApplied = () =>
+        powerGuard.ModeApplied = () =>
         {
             if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => _icon.Refresh()));
         };
@@ -103,10 +81,62 @@ public sealed class TrayApp : IDisposable
         SystemEvents.PowerModeChanged += OnPower;
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
-        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
+        _panel = new QuickPanelForm(_mifs, _cfg, touchpad, touchscreen);
         _panel.Changed = () => _icon.Refresh();
         _panel.MonitorRequested = ShowMonitor;
         _panel.TravelChanged = _travel.Rearm; // панель сама переключила режим — перевзвести наблюдение
+
+        // Уведомления контроллера → обратная связь UI: панель открыта — обновляется она,
+        // иначе OSD; значок обновляем после смены режима. Сама логика — в AppController.
+        _controller.CareChanged = on =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else _osd.Flash(on ? OsdKind.CareOn : OsdKind.CareOff,
+                            on ? Loc.T("osd.care.on") : Loc.T("osd.care.off"));
+        };
+        _controller.TravelChanged = on =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else if (on) _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub"));
+            else _osd.Flash(OsdKind.TravelOff, Loc.T("osd.travel.off"));
+        };
+        _controller.TravelCancelled = () => { if (_panel.Visible) _panel.RefreshUi(); };
+        _controller.ModeSet = m =>
+        {
+            _osd.Flash(ModeKind(m), Loc.T(ModeKey(m) ?? "mode.auto"));
+            _icon.Refresh();
+        };
+        _controller.ModeCycled = m =>
+        {
+            if (_panel.Visible) _panel.RefreshUi(); // выбор «перелистывается» в панели, OSD не нужен
+            else _osd.Flash(ModeKind(m), Loc.T(ModeKey(m) ?? "mode.auto"));
+            _icon.Refresh();
+        };
+        _controller.ProfileModeApplied = () => _icon.Refresh();
+        _controller.ModesReloaded = _panel.ReloadModes;
+        _controller.AutoHzChanged = on =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else if (on) _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.on"),
+                                    Loc.T("osd.hz.on.sub", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate));
+            else _osd.Flash(OsdKind.RefreshRateOff, Loc.T("osd.hz.off"));
+        };
+        _controller.OwlFeatureChanged = _panel.ReloadModes; // сова появляется/уходит из раскладки
+        _controller.AwakeChanged = () => { if (_panel.Visible) _panel.RefreshUi(); };
+        _controller.LanguageChanged = () => _tray.Text = Loc.T("app.name");
+        // тачпад/экран: колбэк приходит с фонового потока — маршалим в UI
+        _controller.TouchpadToggled = b => _osd.BeginInvoke(new Action(() =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else _osd.Flash(b ? OsdKind.TouchpadOn : OsdKind.TouchpadOff,
+                            Loc.T(b ? "osd.touchpad.on" : "osd.touchpad.off"));
+        }));
+        _controller.TouchscreenToggled = b => _osd.BeginInvoke(new Action(() =>
+        {
+            if (_panel.Visible) _panel.RefreshUi();
+            else _osd.Flash(b ? OsdKind.TouchscreenOn : OsdKind.TouchscreenOff,
+                            Loc.T(b ? "osd.touchscreen.on" : "osd.touchscreen.off"));
+        }));
         // Жесты Mi: одинарный/двойной клик настраиваются (MiClickAction/MiDoubleAction);
         // двойной = "none" — жест отключён, одинарный срабатывает мгновенно; удержание → панель
         _mi = new MiButtonGesture
@@ -116,17 +146,17 @@ public sealed class TrayApp : IDisposable
             Hold = () => _panel.Toggle(),
             DoubleEnabled = () => !string.Equals(_cfg.MiDoubleAction, "none", StringComparison.OrdinalIgnoreCase),
         };
-        // Роутинг клавиш: исполнители действий — пока методы TrayApp (позже — AppController)
+        // Роутинг клавиш: исполнители действий — командный слой (окна/панель — наши)
         _router = new KeyRouter(_cfg, _mi)
         {
-            CycleModes = CycleMode,
-            ToggleCharge = ToggleCharge,
+            CycleModes = _controller.CycleMode,
+            ToggleCharge = _controller.ToggleCharge,
             TogglePanel = _panel.Toggle,
-            ToggleOwl = ToggleAwake,
+            ToggleOwl = _controller.ToggleAwake,
             ToggleMonitor = ToggleMonitor,
-            ToggleTravel = () => SetTravel(!_cfg.TravelMode),
-            ToggleTouchpad = ToggleTouchpadAction,
-            ToggleTouchscreen = ToggleTouchscreenAction,
+            ToggleTravel = () => _controller.SetTravel(!_cfg.TravelMode),
+            ToggleTouchpad = _controller.ToggleTouchpad,
+            ToggleTouchscreen = _controller.ToggleTouchscreen,
             Projection = KeyActions.Projection,
             OpenSettings = KeyActions.OpenSettings,
             Copilot = KeyActions.Copilot,
@@ -143,69 +173,12 @@ public sealed class TrayApp : IDisposable
     }
 
     /// <summary>
-    /// Стартовая бизнес-логика (восстановление режима/заряда/совы, запуск слушателей).
-    /// Отдельно от конструктора: граф объектов уже собран, порядок — как до Application.Run.
+    /// Старт приложения: бизнес-логика — в контроллере, здесь только запуск слушателей
+    /// и прогрев UI. Порядок — как до Application.Run.
     /// </summary>
     public void Start()
     {
-        // пока показываем состояние из конфига; реальное уточняем в фоне —
-        // schtasks /query может блокировать до 10 с, старту это ни к чему
-        _autoStart = _cfg.AutoStart;
-        Task.Run(() =>
-        {
-            _autoStart = Safe(AutoStart.IsEnabled, _cfg.AutoStart);
-            // самопочинка: после обновления/переноса exe задача указывает на пропавший путь
-            // и молча не стартует — пересоздаём на текущий exe
-            if (_autoStart) Safe(() => { AutoStart.RepairIfBroken(); return true; }, true);
-        });
-
-        // Страж заряда: применить желаемое состояние на старте
-        _guard.Reapply();
-
-        // Авто-герцовка: частота экрана по текущему питанию
-        _hzGuard.Reapply();
-
-        // «В дорогу»: следим за достижением 100%. Если стартовали посреди режима — на зарядке
-        // продолжаем ждать, иначе (уже отключены) сбрасываем: режим живёт только на зарядке.
-        if (_cfg.TravelMode)
-        {
-            if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travel.Rearm();
-            else { _cfg.TravelMode = false; _cfg.Save(); }
-        }
-
-        // Режим при старте (прошивка сбрасывает его на ребуте):
-        //  • PowerProfiles → применить профиль текущего питания (режим + яркость);
-        //  • иначе RestoreMode → восстановить последний выбранный (если он ещё видим), иначе Auto;
-        //  • иначе, если задан ForceStartMode (только правкой конфига) → принудительно его.
-        if (_cfg.PowerProfiles)
-        {
-            _powerGuard.Reapply();
-        }
-        else if (_cfg.RestoreMode)
-        {
-            if (_cfg.StartPerfMode is PerfMode saved)
-                ApplyStartMode(_modes.Any(m => m.mode == saved) ? saved : PerfMode.Auto);
-        }
-        else if (_cfg.ForceStartMode is PerfMode forced)
-        {
-            ApplyStartMode(forced);
-        }
-
-        // «Запоминать яркость» — самостоятельная опция (без профилей): применить яркость
-        // текущего питания на старте (при профилях это уже сделал _powerGuard.Reapply выше).
-        if (_cfg.RememberBrightness && !_cfg.PowerProfiles) _powerGuard.Reapply();
-
-        // «Режим совы»: восстановить после сбоя, включить заново, либо погасить, если фичу отключили
-        if (_cfg.Awake && !_cfg.OwlMode) { AwakeMode.Disable(_cfg); _cfg.Awake = false; _cfg.Save(); }
-        else if (_cfg.Awake) { AwakeMode.Enable(_cfg); _cfg.Save(); }
-        else if (_cfg.AwakeSavedLidAc is not null) { AwakeMode.Disable(_cfg); _cfg.Save(); }
-
-        // страховка «не залипает»: если тачпад/экран пришлось отключить персистентно,
-        // после перезагрузки включаем их сами (в фоне — PnP-вызовы небыстрые)
-        if (_cfg.TouchpadPersistOff)
-            Task.Run(() => Safe(() => { _touchpad.RestoreAfterBoot(); return true; }, false));
-        if (_cfg.TouchscreenPersistOff)
-            Task.Run(() => Safe(() => { _touchscreen.RestoreAfterBoot(); return true; }, false));
+        _controller.Startup();
 
         // слушатель клавиш прошивки + значок по реальному режиму (и его лёгкий опрос)
         _events.Start();
@@ -223,14 +196,6 @@ public sealed class TrayApp : IDisposable
     {
         try { _menu.Show(new Point(-32000, -32000)); _menu.Close(); }
         catch (Exception ex) { Log.Ex(nameof(PrimeMenu), ex); }
-    }
-
-    private void ApplyModeVisibility()
-    {
-        _modes = Modes.Where(m =>
-            (_cfg.EcoMode || m.mode != PerfMode.Eco) &&
-            (_cfg.FullSpeedMode || m.mode != PerfMode.FullSpeed)).ToArray();
-        _cycle = _modes.Select(m => m.mode).ToArray();
     }
 
     private void ApplyMenuTheme()
@@ -263,37 +228,6 @@ public sealed class TrayApp : IDisposable
         if (!_panel.IsHandleCreated) return;
         _panel.BeginInvoke(() => _router.Handle(code, value)); // все события — в UI-поток
     }
-
-    // Действие «тачпад вкл/выкл»: CM-вызовы небыстрые (отключение узла — сотни мс) — в фоне;
-    // затем OSD (или обновление панели, если она открыта — там своя ячейка).
-    private void ToggleTouchpadAction() => Task.Run(() =>
-    {
-        bool? on = Safe<bool?>(() => _touchpad.Toggle(), null);
-        if (on is not bool b) return;
-        _osd.BeginInvoke(new Action(() =>
-        {
-            if (_panel.Visible) _panel.RefreshUi();
-            else _osd.Flash(b ? OsdKind.TouchpadOn : OsdKind.TouchpadOff,
-                            Loc.T(b ? "osd.touchpad.on" : "osd.touchpad.off"));
-        }));
-    });
-
-    // Действие «сенсорный экран вкл/выкл» — то же самое, что тачпад, но для дигитайзера экрана.
-    private void ToggleTouchscreenAction() => Task.Run(() =>
-    {
-        bool? on = Safe<bool?>(() => _touchscreen.Toggle(), null);
-        if (on is not bool b) return;
-        _osd.BeginInvoke(new Action(() =>
-        {
-            if (_panel.Visible) _panel.RefreshUi();
-            else _osd.Flash(b ? OsdKind.TouchscreenOn : OsdKind.TouchscreenOff,
-                            Loc.T(b ? "osd.touchscreen.on" : "osd.touchscreen.off"));
-        }));
-    });
-
-    // Переключить лимит заряда на противоположный (OSD/панель — внутри ToggleCare)
-    private void ToggleCharge()
-        => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
 
     private void OnMicKey(byte value)
     {
@@ -341,7 +275,7 @@ public sealed class TrayApp : IDisposable
         // подключили при активном режиме — заново ждём 100%.
         if (_cfg.TravelMode)
         {
-            if (!online) DisableTravel();
+            if (!online) _controller.DisableTravel();
             else _travel.Rearm(); // подключили при активном режиме — заново ждём 100%
         }
 
@@ -427,26 +361,26 @@ public sealed class TrayApp : IDisposable
         bool care = Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare);
         var charge = new ToolStripMenuItem(Loc.T("menu.charge")) { Checked = care };
         // состояние читаем в момент клика: пока меню висело, его мог сменить ChargeGuard
-        charge.Click += (_, _) => ToggleCare(!Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare));
+        charge.Click += (_, _) => _controller.ToggleCharge();
         _menu.Items.Add(charge);
 
         // «В дорогу»: временный заряд до 100% поверх «беречь 80%» (неактивно при постоянном 100%)
         var travel = new ToolStripMenuItem(Loc.T("menu.travel")) { Checked = _cfg.TravelMode, Enabled = _cfg.ChargeCare };
-        travel.Click += (_, _) => SetTravel(!_cfg.TravelMode);
+        travel.Click += (_, _) => _controller.SetTravel(!_cfg.TravelMode);
         _menu.Items.Add(travel);
 
         // --- Режим совы (не спать) — если фича не скрыта конфигом ---
         if (_cfg.OwlMode)
         {
             var owl = new ToolStripMenuItem(Loc.T("menu.owl")) { Checked = _cfg.Awake };
-            owl.Click += (_, _) => ToggleAwake();
+            owl.Click += (_, _) => _controller.ToggleAwake();
             _menu.Items.Add(owl);
         }
 
         // --- Авто-герцовка (частота экрана по питанию) ---
         var hz = new ToolStripMenuItem(Loc.T("menu.hz", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate))
         { Checked = _cfg.AutoRefreshRate };
-        hz.Click += (_, _) => ToggleAutoHz(!_cfg.AutoRefreshRate);
+        hz.Click += (_, _) => _controller.ToggleAutoHz(!_cfg.AutoRefreshRate);
         _menu.Items.Add(hz);
 
         // --- Монитор (Вт / CPU / RAM) ---
@@ -458,10 +392,11 @@ public sealed class TrayApp : IDisposable
         PerfMode? current = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
         string currentName = current is PerfMode cm && ModeKey(cm) is string mk ? Loc.T(mk) : "—";
         var perf = new ToolStripMenuItem($"{Loc.T("menu.perf")}:  {currentName}");
-        foreach (var (key, mode) in _modes)
+        foreach (var mode in _controller.VisibleModes)
         {
-            var item = new ToolStripMenuItem(Loc.T(key)) { Checked = current == mode };
-            item.Click += (_, _) => SetMode(mode, key);
+            var m = mode;
+            var item = new ToolStripMenuItem(Loc.T(ModeKey(m) ?? "mode.auto")) { Checked = current == m };
+            item.Click += (_, _) => _controller.SetMode(m);
             perf.DropDownItems.Add(item);
         }
         TintDropDown(perf);
@@ -508,16 +443,16 @@ public sealed class TrayApp : IDisposable
         {
             var act = new SettingsActions
             {
-                GetAutoStart = () => _autoStart,
-                SetAutoStart = ToggleAutoStart,
-                SetLanguage = SetLanguage,
-                SetModeVisibility = ToggleModeVisibility,
-                SetStartStrategy = SetStartStrategy,
-                SetProfileMode = SetProfileMode,
-                SetRememberBrightness = SetRememberBrightnessTo,
-                SetAutoHz = ToggleAutoHz,
-                SetRefreshRates = SetRefreshRates,
-                SetOwlFeature = ToggleOwlFeature,
+                GetAutoStart = () => _controller.AutoStartEnabled,
+                SetAutoStart = _controller.ToggleAutoStart,
+                SetLanguage = _controller.SetLanguage,
+                SetModeVisibility = _controller.ToggleModeVisibility,
+                SetStartStrategy = _controller.SetStartStrategy,
+                SetProfileMode = _controller.SetProfileMode,
+                SetRememberBrightness = _controller.SetRememberBrightness,
+                SetAutoHz = _controller.ToggleAutoHz,
+                SetRefreshRates = _controller.SetRefreshRates,
+                SetOwlFeature = _controller.ToggleOwlFeature,
                 GetBatteryReport = () =>
                 {
                     var r = SystemIntegration.BatteryInfo.Read(); // штатные WMI-классы (циклы, ёмкость, износ)
@@ -532,97 +467,6 @@ public sealed class TrayApp : IDisposable
         _settings.Popup();
     }
 
-    // Стратегия режима при старте (radio в окне настроек) → в существующую взаимоисключающую логику.
-    private void SetStartStrategy(StartStrategy s)
-    {
-        switch (s)
-        {
-            case StartStrategy.None:
-                _cfg.RestoreMode = false; _cfg.ForceStartMode = null; _cfg.PowerProfiles = false; _cfg.Save();
-                break;
-            case StartStrategy.Restore:
-                SetStartRestore(true);
-                break;
-            case StartStrategy.Pin:
-                if (_cfg.ForceStartMode is null) PinCurrentStartMode(); // закрепить текущий (Авто закрепить нельзя)
-                else { _cfg.RestoreMode = false; _cfg.PowerProfiles = false; _cfg.Save(); }
-                break;
-            case StartStrategy.Profiles:
-                SetPowerProfiles(true);
-                break;
-        }
-    }
-
-    // Частоты авто-герцовки из окна настроек: сохранить и, если режим включён, применить сейчас.
-    private void SetRefreshRates(int ac, int batt)
-    {
-        _cfg.AcRefreshRate = ac;
-        _cfg.BatteryRefreshRate = batt;
-        _cfg.Save();
-        if (_cfg.AutoRefreshRate) _hzGuard.Reapply();
-    }
-
-    // Явная установка «запоминать яркость» (окно даёт тумблер, а не переключатель).
-    private void SetRememberBrightnessTo(bool on)
-    {
-        if (_cfg.RememberBrightness != on) ToggleRememberBrightness();
-    }
-
-    // Смена языка (из окна настроек): применяется сразу; окно само пересоберёт свои подписи.
-    private void SetLanguage(Lang lang)
-    {
-        _cfg.Language = lang;
-        Loc.Current = lang;
-        _cfg.Save();
-        _tray.Text = Loc.T("app.name");
-    }
-
-    private void ToggleCare(bool on)
-    {
-        // ручная смена лимита заряда отменяет временный режим «В дорогу»
-        if (_cfg.TravelMode) { _cfg.TravelMode = false; _travel.Rearm(); }
-        Safe(() => { _mifs.SetChargeCare(on); return true; }, false);
-        _cfg.ChargeCare = on;
-        _cfg.Save();
-        if (_panel.Visible)
-            _panel.RefreshUi(); // панель открыта: пилюля 80/100 переключается в ней, OSD не нужен
-        else
-            _osd.Flash(on ? OsdKind.CareOn : OsdKind.CareOff,
-                       on ? Loc.T("osd.care.on") : Loc.T("osd.care.off"));
-    }
-
-    // «В дорогу» (пункт меню): временный заряд до 100% поверх «беречь 80%».
-    // Доступно только при базовом ChargeCare=true (при постоянном 100% смысла нет).
-    private void SetTravel(bool on)
-    {
-        if (on && !_cfg.ChargeCare) return;
-        _cfg.TravelMode = on;
-        _cfg.Save();
-        // on → снять защиту (заряд до 100); off → вернуть базовый режим заряда
-        Safe(() => { _mifs.SetChargeCare(on ? false : _cfg.ChargeCare); return true; }, false);
-        _travel.Rearm();
-        if (_panel.Visible) _panel.RefreshUi();
-        else if (on) _osd.Flash(OsdKind.Travel, Loc.T("osd.travel"), Loc.T("osd.travel.sub"));
-        else _osd.Flash(OsdKind.TravelOff, Loc.T("osd.travel.off"));
-    }
-
-    // Сброс «В дорогу» без OSD (отключили зарядник): ChargeGuard сам вернёт «беречь 80%».
-    private void DisableTravel()
-    {
-        _cfg.TravelMode = false;
-        _cfg.Save();
-        _travel.Rearm();
-        if (_panel.Visible) _panel.RefreshUi();
-    }
-
-    private void SetMode(PerfMode mode, string key)
-    {
-        Safe(() => _mifs.SetPerfMode(mode), false);
-        _cfg.RememberMode(mode);
-        _osd.Flash(ModeKind(mode), Loc.T(key));
-        _icon.Refresh();
-    }
-
     private static OsdKind ModeKind(PerfMode m) => m switch
     {
         PerfMode.Eco => OsdKind.Eco,
@@ -632,142 +476,6 @@ public sealed class TrayApp : IDisposable
         PerfMode.FullSpeed => OsdKind.Full,
         _ => OsdKind.Auto,
     };
-
-    /// <summary>Переключить на следующий режим по кругу + OSD (для Fn+Mi / хоткея).</summary>
-    private void CycleMode()
-    {
-        var cur = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null) ?? PerfMode.Auto;
-        int idx = Array.IndexOf(_cycle, cur);
-        var next = _cycle[(idx < 0 ? 0 : idx + 1) % _cycle.Length];
-        Safe(() => _mifs.SetPerfMode(next), false);
-        _cfg.RememberMode(next);
-        if (_panel.Visible)
-            _panel.RefreshUi(); // панель открыта: выбор «перелистывается» в ней, OSD не нужен
-        else
-            _osd.Flash(ModeKind(next), Loc.T(ModeKey(next) ?? "mode.auto"));
-        _icon.Refresh();
-    }
-
-    private void ToggleModeVisibility(bool eco, bool full)
-    {
-        _cfg.EcoMode = eco;
-        _cfg.FullSpeedMode = full;
-        _cfg.Save();
-        ApplyModeVisibility();
-        _panel.ReloadModes();
-    }
-
-    // Применить желаемый стартовый режим; если прошивка не приняла (напр. Full-speed на батарее) — Auto.
-    private void ApplyStartMode(PerfMode mode)
-    {
-        if (!Safe(() => _mifs.SetPerfMode(mode), false))
-            Safe(() => _mifs.SetPerfMode(PerfMode.Auto), false);
-    }
-
-    // «Восстанавливать последний» (взаимоисключающе с «закрепить»). При первом включении
-    // (StartPerfMode ещё пуст) запоминаем текущий режим сразу — чтобы было что восстанавливать;
-    // при повторном значение не трогаем, поэтому вернётся всё как было до отключения.
-    private void SetStartRestore(bool on)
-    {
-        _cfg.RestoreMode = on;
-        if (on)
-        {
-            _cfg.ForceStartMode = null;   // включили восстановление — снимаем закреп
-            _cfg.PowerProfiles = false;   // …и профили питания (три стратегии взаимоисключающи)
-            if (_cfg.StartPerfMode is null)
-                _cfg.StartPerfMode = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
-        }
-        _cfg.Save();
-    }
-
-    // «Закрепить текущий режим» — переключатель: уже закреплён → снять (обе галки пустые);
-    // не закреплён → закрепить текущий (Авто/не прочитался — закреплять нечего). Закрепление
-    // взаимоисключающе гасит «восстанавливать последний».
-    private void PinCurrentStartMode()
-    {
-        if (_cfg.ForceStartMode is not null)
-        {
-            _cfg.ForceStartMode = null; // снять закреп
-        }
-        else if (Safe<PerfMode?>(() => _mifs.GetPerfMode(), null) is PerfMode m && m != PerfMode.Auto)
-        {
-            _cfg.ForceStartMode = m;
-            _cfg.RestoreMode = false;
-            _cfg.PowerProfiles = false; // закрепили режим — профили питания выключаем
-        }
-        _cfg.Save();
-    }
-
-    // «Профили питания» (взаимоисключающе с «восстанавливать»/«закрепить»): включаем —
-    // засеваем текущую яркость в слот текущего питания (чтоб было что вспоминать) и применяем.
-    private void SetPowerProfiles(bool on)
-    {
-        _cfg.PowerProfiles = on;
-        if (on)
-        {
-            _cfg.RestoreMode = false;
-            _cfg.ForceStartMode = null;
-            if (_cfg.RememberBrightness) SeedCurrentBrightness();
-        }
-        _cfg.Save();
-        if (on) _powerGuard.Reapply();
-    }
-
-    // Выбор режима профиля (ac=true — сеть, иначе батарея; mode=null — «не менять»).
-    // Если это профиль текущего питания — применяем сразу для мгновенной обратной связи.
-    private void SetProfileMode(bool ac, PerfMode? mode)
-    {
-        if (ac) _cfg.AcPerfMode = mode; else _cfg.BatteryPerfMode = mode;
-        _cfg.Save();
-        bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
-        if (mode is PerfMode m && ac == online)
-        {
-            if (!Safe(() => _mifs.SetPerfMode(m), false))
-                Safe(() => _mifs.SetPerfMode(PerfMode.Auto), false);
-            _icon.Refresh();
-        }
-    }
-
-    private void ToggleRememberBrightness()
-    {
-        _cfg.RememberBrightness = !_cfg.RememberBrightness;
-        if (_cfg.RememberBrightness) SeedCurrentBrightness();
-        _cfg.Save();
-    }
-
-    // Запомнить текущую яркость в слот текущего питания (при включении опции — чтобы был старт).
-    private void SeedCurrentBrightness()
-    {
-        if (Brightness.Get() is not int lvl) return;
-        if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online)
-            _cfg.AcBrightness = lvl;
-        else
-            _cfg.BatteryBrightness = lvl;
-    }
-
-    // Авто-герцовка: вкл — сразу применить частоту по текущему питанию, выкл — частоту не трогаем
-    private void ToggleAutoHz(bool on)
-    {
-        _cfg.AutoRefreshRate = on;
-        _cfg.Save();
-        if (on) _hzGuard.Reapply();
-        if (_panel.Visible)
-            _panel.RefreshUi(); // панель открыта: ячейка герцовки переключается в ней, OSD не нужен
-        else if (on)
-            _osd.Flash(OsdKind.RefreshRate, Loc.T("osd.hz.on"),
-                       Loc.T("osd.hz.on.sub", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate));
-        else
-            _osd.Flash(OsdKind.RefreshRateOff, Loc.T("osd.hz.off"));
-    }
-
-    // Показ/скрытие «режима совы» как фичи; при скрытии активный режим гасится
-    private void ToggleOwlFeature(bool on)
-    {
-        _cfg.OwlMode = on;
-        if (!on && _cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
-        _cfg.Save();
-        _panel.ReloadModes(); // перестроить раскладку панели (сова появляется/уходит)
-    }
 
     private MonitorForm? _monitor;
 
@@ -784,28 +492,6 @@ public sealed class TrayApp : IDisposable
         else ShowMonitor();
     }
 
-    // «Режим совы»: включить/выключить «не спать» (панель обновится, если открыта)
-    private void ToggleAwake()
-    {
-        if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Awake = false; }
-        else if (AwakeMode.Enable(_cfg)) { _cfg.Awake = true; }
-        _cfg.Save();
-        if (_panel.Visible) _panel.RefreshUi();
-    }
-
-    // schtasks может блокировать до 10 с (WaitForExit) — с UI-потока не зовём,
-    // иначе окно настроек зависнет на клике по тумблеру
-    private void ToggleAutoStart(bool on)
-    {
-        Task.Run(() =>
-        {
-            Safe(() => { AutoStart.Set(on); return true; }, false);
-            _autoStart = Safe(AutoStart.IsEnabled, on);  // перечитать реальное состояние
-            _cfg.AutoStart = _autoStart;
-            _cfg.Save();
-        });
-    }
-
     private static T Safe<T>(Func<T> f, T fallback,
         [System.Runtime.CompilerServices.CallerMemberName] string caller = "")
     {
@@ -815,9 +501,7 @@ public sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
-        // вернуть действие крышки; сам флаг Awake в конфиге не трогаем —
-        // при следующем запуске режим включится снова
-        if (_cfg.Awake) { AwakeMode.Disable(_cfg); _cfg.Save(); }
+        _controller.Shutdown(); // вернуть действие крышки (сова)
 
         SystemEvents.PowerModeChanged -= OnPower;
         SystemEvents.UserPreferenceChanged -= OnUserPref;

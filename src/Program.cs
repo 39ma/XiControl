@@ -39,6 +39,7 @@ internal static class Program
         services.AddSingleton<PowerProfileGuard>();
         services.AddSingleton<TravelChargeMonitor>();
         services.AddSingleton<TrayIconController>();
+        services.AddSingleton<AppController>();
         services.AddSingleton<TrayApp>();
         using var provider = services.BuildServiceProvider();
 

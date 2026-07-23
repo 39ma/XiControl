@@ -43,12 +43,8 @@ public sealed class JsonConfigStore : IConfigStore
     /// <summary>Конфиг для первого старта (файла нет / повреждён): язык — по языку ОС.</summary>
     private static AppConfig Fresh() => new() { Language = DetectOsLanguage() };
 
-    /// <summary>Язык интерфейса по языку Windows: ru→Ru, zh→Zh, всё остальное (вкл. en)→En.</summary>
-    private static Lang DetectOsLanguage() =>
-        System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName switch
-        {
-            "ru" => Lang.Ru,
-            "zh" => Lang.Zh,
-            _ => Lang.En,
-        };
+    /// <summary>Язык интерфейса по языку Windows: берём его культуру, если перевод есть,
+    /// иначе базовый (Loc.Resolve) — новый язык подхватится автоматически, без правок здесь.</summary>
+    private static string DetectOsLanguage() =>
+        Loc.Resolve(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
 }

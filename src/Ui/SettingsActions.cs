@@ -15,7 +15,9 @@ public sealed class SettingsActions
 {
     public Func<bool> GetAutoStart = () => false;
     public Action<bool> SetAutoStart = _ => { };
-    public Action<Lang> SetLanguage = _ => { };
+    public Func<IReadOnlyList<LangInfo>> Languages = () => [];  // доступные языки (data-driven)
+    public Func<string> CurrentLanguage = () => "";            // текущий культурный код
+    public Action<string> SetLanguage = _ => { };             // сменить язык по культурному коду
     public Action<bool, bool> SetModeVisibility = (_, _) => { };   // eco, full
     public Func<StartStrategy> GetStartStrategy = () => StartStrategy.None;
     public Action<StartStrategy> SetStartStrategy = _ => { };

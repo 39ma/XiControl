@@ -30,6 +30,8 @@
     <EmbeddedResource Include="..\assets\svg\**\*.svg" LogicalName="svg.%(Filename).svg" />
     <!-- Звуки (WAV) встраиваются в сборку -->
     <EmbeddedResource Include="..\assets\sound\**\*.wav" LogicalName="sound.%(Filename).wav" />
+    <!-- Переводы (JSON, по файлу на язык) встраиваются в сборку: lang.<культура>.json -->
+    <EmbeddedResource Include="Localization\lang\*.json" LogicalName="lang.%(Filename).json" />
   </ItemGroup>
 
 </Project>

@@ -45,7 +45,7 @@ internal static class Program
 
         var cfg = provider.GetRequiredService<AppConfig>();
         Log.Enabled = cfg.LogEnabled; // до этой строчки лог включён — ошибки старта не теряем
-        provider.GetRequiredService<ILocalizer>().Current = cfg.Language;
+        provider.GetRequiredService<ILocalizer>().Current = cfg.Language ?? ""; // Loc нормализует пустую/неизвестную культуру
 
         try
         {

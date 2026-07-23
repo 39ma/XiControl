@@ -1,5 +1,4 @@
 ﻿using System.Text.Json.Serialization;
-using XiControl.Localization;
 using XiControl.Wmi;
 
 namespace XiControl.Config;
@@ -7,7 +6,10 @@ namespace XiControl.Config;
 /// <summary>Настройки приложения. Хранятся в %APPDATA%\XiControl\config.json.</summary>
 public sealed class AppConfig
 {
-    public Lang Language { get; set; } = Lang.Ru;
+    /// <summary>Язык интерфейса — культурный код (напр. «ru»); null = определить по языку ОС.
+    /// Старые конфиги хранили индекс (0/1/2) — мигрируется конвертером.</summary>
+    [JsonConverter(typeof(LegacyLanguageConverter))]
+    public string? Language { get; set; }
 
     /// <summary>Одноразовая подсказка при первом запуске уже показана (balloon-tip трея).</summary>
     public bool FirstRunShown { get; set; } = false;

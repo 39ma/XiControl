@@ -1,218 +1,97 @@
+using System.Text.Json;
+
 namespace XiControl.Localization;
 
-public enum Lang { Ru = 0, En = 1, Zh = 2 }
+/// <summary>Язык интерфейса: культурный код (напр. «ru») + родное название (из файла перевода).</summary>
+public sealed record LangInfo(string Culture, string Name);
 
-/// <summary>Простая локализация RU/EN/ZH. Ключ → [ru, en, zh].</summary>
+/// <summary>
+/// Локализация приложения. Строки грузятся из встроенных JSON — по одному файлу на язык
+/// (<c>Localization/lang/&lt;культура&gt;.json</c>: плоская карта «ключ → перевод» + мета
+/// <c>_culture</c>/<c>_name</c>/<c>_order</c>). Список языков — data-driven: добавить перевод =
+/// положить новый JSON, править код не нужно (см. CONTRIBUTING.md «Как добавить перевод»).
+/// Непереведённый ключ откатывается на базовый язык, затем на сам ключ — приложение не падает.
+/// </summary>
 public static class Loc
 {
-    public static Lang Current { get; set; } = Lang.Ru;
+    private const string BaseCulture = "en"; // фолбэк для ключа, отсутствующего в текущем языке
 
-    private static readonly Dictionary<string, string[]> S = new()
+    // культура → (ключ → строка); список языков — упорядоченный для меню/настроек
+    private static readonly Dictionary<string, Dictionary<string, string>> Strings = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<LangInfo> Langs = [];
+
+    private static string _current = BaseCulture;
+
+    static Loc() => LoadEmbedded();
+
+    /// <summary>Текущий язык (культурный код). Неизвестный/пустой автоматически → базовый.</summary>
+    public static string Current
     {
-        ["app.name"]        = ["Xi Control", "Xi Control", "Xi Control"],
-        ["menu.charge"]     = ["Беречь батарею (80%)", "Battery care (80%)", "电池保护 (80%)"],
-        ["menu.travel"]     = ["Зарядить «в дорогу» (100%)", "Travel charge (100%)", "出行充电 (100%)"],
-        ["menu.perf"]       = ["Режим производительности", "Performance mode", "性能模式"],
-        ["mode.eco"]        = ["Эко", "Eco", "节能"],
-        ["mode.quiet"]      = ["Тихий", "Quiet", "静音"],
-        ["mode.turbo"]      = ["Турбо", "Turbo", "高性能"],
-        ["mode.full"]       = ["Полная мощность", "Full speed", "全速"],
-        ["mode.auto"]       = ["Авто", "Auto", "智能"],
-        ["menu.settings"]   = ["Настройки", "Settings", "设置"],
-        ["menu.owl"]        = ["Режим совы (не спать)", "Owl mode (keep awake)", "猫头鹰模式（保持唤醒）"],
-        ["menu.hz"]         = ["Авто-герцовка ({0}/{1} Гц)", "Auto refresh rate ({0}/{1} Hz)", "自动刷新率（{0}/{1} Hz）"],
-        ["menu.exit"]       = ["Выход", "Exit", "退出"],
+        get => _current;
+        set => _current = Resolve(value);
+    }
 
-        // --- Окно настроек ---
-        ["settings.title"]        = ["Настройки XiControl", "XiControl Settings", "XiControl 设置"],
-        ["settings.tab.general"]  = ["Общие", "General", "常规"],
-        ["settings.tab.battery"]  = ["Батарея", "Battery", "电池"],
-        ["settings.tab.display"]  = ["Экран", "Display", "屏幕"],
-        ["settings.tab.perf"]     = ["Производительность", "Performance", "性能"],
-        ["settings.tab.keys"]     = ["Клавиши", "Keys", "按键"],
-        ["settings.tab.about"]    = ["О программе", "About", "关于"],
+    /// <summary>Доступные языки в порядке для комбо/меню (по <c>_order</c>, затем по названию).</summary>
+    public static IReadOnlyList<LangInfo> Available => Langs;
 
-        ["settings.general.sub"]  = ["Язык, запуск с Windows и общие удобства.", "Language, startup and general conveniences.", "语言、开机启动与通用便捷设置。"],
-        ["settings.language"]     = ["Язык", "Language", "语言"],
-        ["settings.language.desc"]= ["Язык меню, панели и всплывашек.", "Language of the menu, panel and pop-ups.", "菜单、面板和提示的语言。"],
-        ["settings.autostart"]    = ["Запускать при входе в Windows", "Start with Windows", "开机自启动"],
-        ["settings.autostart.desc"]= ["Через Планировщик заданий, без запроса UAC.", "Via Task Scheduler, without a UAC prompt.", "通过任务计划程序，无需 UAC 提示。"],
-        ["settings.general.comfort"]= ["Удобства", "Comfort", "便捷功能"],
-        ["settings.brightness.desc"]= ["Отдельно для сети и батареи; без «Профилей».", "Separately for AC and battery; no Power profiles.", "分别用于电源和电池，无需电源配置。"],
+    /// <summary>Культура, если такой перевод есть; иначе базовый язык (для DetectOsLanguage и т.п.).</summary>
+    public static string Resolve(string? culture)
+        => !string.IsNullOrEmpty(culture) && Strings.ContainsKey(culture) ? culture
+           : Strings.ContainsKey(BaseCulture) ? BaseCulture
+           : Langs.Count > 0 ? Langs[0].Culture : BaseCulture;
 
-        ["settings.battery.sub"]  = ["Режим «В дорогу» и звук готовности заряда.", "Travel mode and the charge-ready sound.", "出行模式与充电完成提示音。"],
-        ["settings.battery.note"] = ["Порог «Беречь батарею» (≈80%) зашит в прошивку и одинаков для модели — произвольный процент недоступен. Сам тумблер 80/100 живёт в трее и панели как быстрое действие.", "The battery-care threshold (~80%) is fixed in firmware for this model — an arbitrary percent isn’t possible. The 80/100 toggle itself lives in the tray and panel as a quick action.", "“电池保护”阈值（约 80%）由固件固定，无法自定义百分比。80/100 开关作为快捷操作位于托盘和面板中。"],
-        ["settings.battery.travel"]= ["Режим «В дорогу»", "Travel mode", "出行模式"],
-        ["settings.travel.sound"] = ["Звук готовности", "Ready sound", "完成提示音"],
-        ["settings.travel.sound.desc"]= ["Джингл, когда батарея дозарядилась до 100%.", "A jingle when the battery reaches 100%.", "电池充至 100% 时播放提示音。"],
-        ["settings.travel.file"]  = ["Свой звуковой файл", "Custom sound file", "自定义音频文件"],
-        ["settings.travel.file.desc"]= ["WAV/PCM. Пусто — встроенный джингл.", "WAV/PCM. Empty — built-in jingle.", "WAV/PCM。留空则使用内置提示音。"],
-        ["settings.browse"]       = ["Обзор…", "Browse…", "浏览…"],
-        ["settings.charger"]      = ["Зарядное устройство", "Charger", "充电器"],
-        ["settings.charger.watts"]= ["Показывать мощность в OSD", "Show wattage in OSD", "在 OSD 显示功率"],
-        ["settings.charger.watts.desc"]= ["Ватты подключённого адаптера при подключении зарядки (только PD-адаптеры).", "Wattage of the connected adapter when charging starts (PD adapters only).", "接通充电时显示适配器功率（仅限 PD 适配器）。"],
-        ["settings.charger.weak"] = ["Предупреждать о слабом", "Warn if underpowered", "功率不足时提醒"],
-        ["settings.charger.weak.desc"]= ["Если подключён адаптер мощностью ниже порога — OSD с предупреждением о медленном заряде.", "If a connected adapter is below this wattage — an OSD warns about slow charging.", "若适配器功率低于阈值，则弹出慢充提醒。"],
-        ["settings.battery.state"]= ["Состояние", "Condition", "状态"],
-        ["settings.battery.health"]= ["Здоровье батареи", "Battery health", "电池健康度"],
-        ["settings.battery.health.desc"]= ["Текущая максимальная ёмкость относительно проектной.", "Current maximum capacity relative to the design capacity.", "当前最大容量相对于设计容量。"],
-        ["settings.battery.cycles"]= ["Циклы заряда", "Charge cycles", "充电循环"],
-        ["settings.battery.cycles.desc"]= ["Сколько полных циклов заряда прошла батарея.", "Full charge cycles the battery has been through.", "电池已完成的完整充电循环次数。"],
-        ["settings.battery.capacity"]= ["Ёмкость", "Capacity", "容量"],
-        ["settings.battery.capacity.desc"]= ["Текущая максимальная и проектная ёмкость.", "Current maximum and design capacity.", "当前最大容量与设计容量。"],
-        ["settings.battery.capacity.val"]= ["{0:0.0} / {1:0.0} Вт·ч", "{0:0.0} / {1:0.0} Wh", "{0:0.0} / {1:0.0} 瓦时"],
-
-        ["settings.display.sub"]  = ["Частота обновления в зависимости от питания.", "Refresh rate depending on the power source.", "根据电源自动切换刷新率。"],
-        ["settings.hz.auto"]      = ["Авто-частота по питанию", "Auto refresh rate by power", "按电源自动刷新率"],
-        ["settings.hz.auto.desc"] = ["Повышенная от сети, пониженная от батареи — экономит заряд.", "Higher on AC, lower on battery — saves power.", "接通电源时更高，使用电池时更低，省电。"],
-        ["settings.hz.rates"]     = ["Частоты", "Rates", "刷新率"],
-        ["settings.hz.unit"]      = ["Гц", "Hz", "Hz"],
-        ["settings.hz.ac"]        = ["От сети", "On AC", "接通电源"],
-        ["settings.hz.ac.desc"]   = ["Если точной частоты нет — берётся ближайшая.", "If the exact rate is missing — the nearest is used.", "若无精确刷新率则取最接近值。"],
-        ["settings.hz.battery"]   = ["От батареи", "On battery", "使用电池"],
-        ["settings.hz.battery.desc"]= ["Обычно 60 Гц для экономии.", "Usually 60 Hz to save power.", "通常为 60 Hz 以省电。"],
-        ["settings.hz.note"]      = ["При смене частоты экран может на мгновение мигнуть или погаснуть — это нормально, так дисплей переключается на новый режим. Если нужная частота уже установлена, переключения не происходит.", "The screen may briefly flicker or go black when the refresh rate changes — that’s normal, the display is switching modes. If the target rate is already set, nothing is switched.", "切换刷新率时屏幕可能短暂闪烁或黑屏——这是正常现象，显示器正在切换模式。若目标刷新率已生效，则不会切换。"],
-
-        ["settings.perf.sub"]     = ["Видимость режимов и поведение при запуске системы.", "Mode visibility and startup behavior.", "模式可见性与启动行为。"],
-        ["settings.perf.modes"]   = ["Видимые режимы", "Visible modes", "可见模式"],
-        ["settings.show.eco"]     = ["Показывать режим «Эко»", "Show Eco mode", "显示节能模式"],
-        ["settings.show.eco.desc"]= ["Скрытый энергосберегающий режим прошивки.", "The firmware’s hidden power-saving mode.", "固件隐藏的节能模式。"],
-        ["settings.show.full"]    = ["Показывать «Полную мощность»", "Show Full speed mode", "显示全速模式"],
-        ["settings.show.full.desc"]= ["Максимальный режим. Выкл — убирается из меню и панели.", "Maximum mode. Off — removed from menu and panel.", "最高性能模式。关闭后从菜单和面板移除。"],
-        ["settings.startmode"]    = ["Режим при старте", "Startup mode", "启动模式"],
-        ["settings.start.none"]   = ["Не трогать", "Leave as is", "不更改"],
-        ["settings.start.none.desc"]= ["Оставлять то, что выставила прошивка.", "Keep whatever the firmware set.", "保留固件设置的模式。"],
-        ["settings.start.restore"]= ["Восстанавливать последний", "Restore last used", "恢复上次使用"],
-        ["settings.start.restore.desc"]= ["Запоминать выбранный режим и включать его на старте.", "Remember the chosen mode and apply it at startup.", "记住所选模式并在启动时应用。"],
-        ["settings.start.pin"]    = ["Закрепить текущий", "Pin current", "锁定当前"],
-        ["settings.start.pin.desc"]= ["Всегда включать один и тот же режим при загрузке.", "Always apply the same mode at boot.", "每次启动都应用同一模式。"],
-        ["settings.start.profiles"]= ["Профили питания", "Power profiles", "电源配置"],
-        ["settings.start.profiles.desc"]= ["Свой режим производительности при зарядке и от батареи.", "A separate performance mode on AC and battery.", "为电源和电池分别设置性能模式。"],
-        ["settings.profile.ac"]   = ["Режим при зарядке", "Mode on AC", "接通电源时的模式"],
-        ["settings.profile.battery"]= ["Режим от батареи", "Mode on battery", "使用电池时的模式"],
-        ["settings.profile.brightness"]= ["Запоминать яркость экрана", "Remember screen brightness", "记住屏幕亮度"],
-        ["settings.profile.nochange"]= ["Не менять", "Don’t change", "不更改"],
-
-        ["settings.keys.sub"]     = ["Действия Mi-кнопки и «мёртвых» клавиш — на каждую можно навесить свою функцию.", "Actions of the Mi button and dead keys — assign any function to each.", "Mi 键与专用按键的动作，可为每个键分配功能。"],
-        ["settings.keys.mi"]      = ["Mi-кнопка", "Mi button", "Mi 键"],
-        ["settings.keys.mi.hold"] = ["Удержание Mi-кнопки всегда открывает быструю панель.", "Holding the Mi button always opens the quick panel.", "长按 Mi 键总是打开快速面板。"],
-        ["settings.key.mi.click"] = ["Одиночный клик", "Single click", "单击"],
-        ["settings.key.mi.click.desc"]= ["Короткое нажатие Mi-кнопки.", "A short press of the Mi button.", "短按 Mi 键。"],
-        ["settings.key.mi.double"]= ["Двойной клик", "Double click", "双击"],
-        ["settings.key.mi.double.desc"]= ["«Ничего» — жест отключён, одиночный клик срабатывает мгновенно.", "“Nothing” disables the gesture; single click fires instantly.", "选择“无”则禁用手势，单击立即生效。"],
-        ["settings.keys.other"]   = ["Прочие клавиши", "Other keys", "其他按键"],
-        ["settings.key.settings"] = ["Клавиша «Настройки»", "“Settings” key", "“设置”键"],
-        ["settings.key.settings.desc"]= ["Клавиша с шестерёнкой. При открытой панели — всегда заряд 80/100.", "The gear key. While the panel is open it always toggles charge.", "齿轮键。面板打开时始终切换充电。"],
-        ["settings.key.ai"]       = ["AI-клавиша", "AI key", "AI 键"],
-        ["settings.key.ai.desc"]  = ["Клавиша нейропомощника.", "The AI assistant key.", "AI 助手键。"],
-        ["settings.key.proj"]     = ["Клавиша «Проекция»", "“Projection” key", "“投影”键"],
-        ["settings.key.proj.desc"]= ["Клавиша переключения экранов.", "The display-switch key.", "屏幕切换键。"],
-        ["settings.key.command"]  = ["Программа / файл / URL", "Program / file / URL", "程序 / 文件 / URL"],
-        ["settings.act.modes"]    = ["Цикл режимов", "Cycle modes", "循环性能模式"],
-        ["settings.act.charge"]   = ["Заряд 80 / 100 %", "Charge 80 / 100 %", "充电 80 / 100 %"],
-        ["settings.act.panel"]    = ["Быстрая панель", "Quick panel", "快速面板"],
-        ["settings.act.owl"]      = ["Режим совы", "Owl mode", "猫头鹰模式"],
-        ["settings.act.monitor"]  = ["Монитор", "Monitor", "监视器"],
-        ["settings.act.travel"]   = ["Режим «В дорогу»", "Travel mode", "出行模式"],
-        ["settings.act.touchpad"] = ["Тачпад вкл/выкл", "Touchpad on/off", "触控板开关"],
-        ["settings.act.touchscreen"] = ["Сенсорный экран вкл/выкл", "Touchscreen on/off", "触摸屏开关"],
-        ["settings.act.projection"]= ["Проекция (Win+P)", "Projection (Win+P)", "投影（Win+P）"],
-        ["settings.act.settings"] = ["Параметры Windows", "Windows Settings", "Windows 设置"],
-        ["settings.act.copilot"]  = ["Copilot (Win+C)", "Copilot (Win+C)", "Copilot（Win+C）"],
-        ["settings.act.launch"]   = ["Запустить программу…", "Launch a program…", "启动程序…"],
-        ["settings.act.none"]     = ["Ничего", "Nothing", "无"],
-        ["settings.keys.features"]= ["Функции", "Features", "功能"],
-        ["settings.owl.feature"]  = ["«Режим совы» как функция", "Owl mode feature", "猫头鹰模式功能"],
-        ["settings.owl.feature.desc"]= ["Показывать сову в панели и пункт меню (не гасить экран / не спать).", "Show the owl in the panel and menu (keep screen on / no sleep).", "在面板和菜单中显示猫头鹰（保持屏幕常亮/不休眠）。"],
-        ["settings.touchpad.feature"] = ["Управление тачпадом", "Touchpad control", "触控板控制"],
-        ["settings.touchpad.feature.desc"]= ["Ячейка в панели и действие для клавиш. Отключённый тачпад всегда включается сам после перезагрузки.", "Panel cell and key action. A disabled touchpad always re-enables itself after a reboot.", "面板单元格与按键动作。禁用的触控板重启后总会自动恢复。"],
-        ["settings.touchscreen.feature"] = ["Управление сенсорным экраном", "Touchscreen control", "触摸屏控制"],
-        ["settings.touchscreen.feature.desc"]= ["Ячейка в панели и действие для клавиш. Отключённый сенсорный экран всегда включается сам после перезагрузки.", "Panel cell and key action. A disabled touchscreen always re-enables itself after a reboot.", "面板单元格与按键动作。禁用的触摸屏重启后总会自动恢复。"],
-        ["settings.log"]          = ["Логировать ошибки и проблемы", "Log errors and issues", "记录错误与问题"],
-        ["settings.log.desc"]     = ["Журнал %APPDATA%\\XiControl\\log.txt — пригодится для отчёта об ошибке. Выкл — не пишется ничего.", "The %APPDATA%\\XiControl\\log.txt journal — useful for bug reports. Off — nothing is written at all.", "日志位于 %APPDATA%\\XiControl\\log.txt，便于反馈问题。关闭后完全不写入。"],
-
-        ["settings.about.sub"]    = ["Driver-free трей-утилита для ноутбуков Xiaomi / Redmi.", "Driver-free tray utility for Xiaomi / Redmi laptops.", "适用于 Xiaomi / Redmi 笔记本的免驱托盘工具。"],
-        ["settings.version"]      = ["Версия", "Version", "版本"],
-        ["settings.about.forum"]  = ["Форум 4PDA", "4PDA forum", "4PDA 论坛"],
-        ["settings.about.license"]= ["Лицензия", "License", "许可证"],
-        ["settings.about.updates"]= ["Проверить обновления", "Check for updates", "检查更新"],
-        ["settings.about.model"]  = ["Модель", "Model", "型号"],
-        ["settings.about.iface"]  = ["Интерфейс прошивки", "Firmware interface", "固件接口"],
-        ["settings.about.config"] = ["Конфигурация", "Configuration", "配置文件"],
-        ["settings.about.log"]    = ["Журнал", "Log", "日志"],
-        ["settings.about.note"]   = ["Без kernel-драйверов, WinRing0 и прямого доступа к EC. Всё управление — через штатный WMI-интерфейс прошивки и Win32.", "No kernel drivers, WinRing0 or direct EC access. Everything goes through the firmware’s WMI interface and Win32.", "无内核驱动、无 WinRing0、不直接访问 EC。全部通过固件 WMI 接口与 Win32 实现。"],
-
-        ["panel.title"]     = ["Быстрые настройки", "Quick settings", "快速设置"],
-        ["panel.charge"]    = ["Заряд батареи", "Battery charge", "电池充电"],
-        ["panel.awake"]     = ["Не спать", "Keep awake", "保持唤醒"],
-        ["panel.travel"]    = ["В дорогу", "Travel", "出行"],
-
-        ["osd.travel"]       = ["Режим «В дорогу»", "Travel mode", "出行模式"],
-        ["osd.travel.sub"]   = ["Заряжаем до 100%", "Charging to 100%", "充电至 100%"],
-        ["osd.travel.off"]   = ["Режим «В дорогу» выключен", "Travel mode off", "出行模式已关闭"],
-        ["osd.travel.ready"] = ["Батарея заряжена — можно в дорогу!", "Battery full — ready to go!", "电池已充满，可以出发！"],
-
-        ["osd.touchpad.on"]  = ["Тачпад включён", "Touchpad on", "触控板已开启"],
-        ["osd.touchpad.off"] = ["Тачпад выключен", "Touchpad off", "触控板已关闭"],
-
-        ["osd.touchscreen.on"]  = ["Сенсорный экран включён", "Touchscreen on", "触摸屏已开启"],
-        ["osd.touchscreen.off"] = ["Сенсорный экран выключен", "Touchscreen off", "触摸屏已关闭"],
-
-        ["menu.monitor"]    = ["Монитор", "Monitor", "监视器"],
-        ["monitor.title"]   = ["Монитор", "Monitor", "监视器"],
-        ["monitor.power"]   = ["Потребление", "Power draw", "功耗"],
-        ["monitor.watts"]   = ["{0:0.0} Вт", "{0:0.0} W", "{0:0.0} 瓦"],
-        ["monitor.na"]      = ["— от сети", "— on AC", "— 交流供电"],
-        ["monitor.ram.of"]  = ["{0:0.0} / {1:0.0} ГБ", "{0:0.0} / {1:0.0} GB", "{0:0.0} / {1:0.0} GB"],
-        ["monitor.adapter"] = ["Адаптер {0} Вт", "Adapter {0} W", "适配器 {0} 瓦"],
-        ["monitor.watts.scale"] = ["{0:0} Вт", "{0:0} W", "{0:0} 瓦"],
-        ["monitor.temp"]    = ["Температура", "Temperature", "温度"],
-        ["monitor.temp.c"]  = ["{0} °C", "{0} °C", "{0} °C"],
-
-        ["osd.charging"]         = ["Зарядка", "Charging", "充电中"],
-        ["osd.charging.limited"] = ["Зарядка до {0}%", "Charging to {0}%", "充电至 {0}%"],
-        ["osd.onbattery"]        = ["Работа от батареи", "On battery", "电池供电"],
-        ["osd.charger.watts"]    = ["{0} Вт", "{0} W", "{0} 瓦"],
-        ["osd.charger.weak"]     = ["Слабый зарядник — заряд медленный", "Weak charger — slow charging", "充电器功率低，充电较慢"],
-        ["osd.charger.nopd"]     = ["PD не поддерживается", "PD not supported", "不支持 PD"],
-        ["osd.level"]            = ["Заряд {0}%", "Battery {0}%", "电量 {0}%"],
-        ["osd.care.on"]          = ["Беречь батарею", "Battery care", "电池保护"],
-        ["osd.care.off"]         = ["Заряд до 100%", "Charge to 100%", "充电至 100%"],
-        ["osd.mic.on"]           = ["Микрофон включён", "Microphone on", "麦克风已开启"],
-        ["osd.mic.off"]          = ["Микрофон выключен", "Microphone off", "麦克风已静音"],
-        ["osd.backlight"]        = ["Подсветка клавиатуры", "Keyboard backlight", "键盘背光"],
-        ["osd.backlight.level"]  = ["{0}%", "{0}%", "{0}%"],
-        ["osd.off"]              = ["Выключено", "Off", "已关闭"],
-        ["osd.auto"]             = ["Авто", "Auto", "自动"],
-        ["osd.hz"]               = ["{0} Гц", "{0} Hz", "{0} Hz"],
-        ["osd.hz.on"]            = ["Авто-герцовка", "Auto refresh rate", "自动刷新率"],
-        ["osd.hz.on.sub"]        = ["{0} Гц от сети, {1} Гц от батареи", "{0} Hz on AC, {1} Hz on battery", "交流电 {0} Hz，电池 {1} Hz"],
-        ["osd.hz.off"]           = ["Авто-герцовка выключена", "Auto refresh rate off", "自动刷新率已关闭"],
-        ["osd.fnlock"]           = ["Fn-Lock", "Fn-Lock", "Fn 锁定"],
-        ["osd.fnlock.on"]        = ["Классические F1–F12", "Function keys F1–F12", "F1–F12 功能键"],
-        ["osd.fnlock.off"]       = ["Мультимедийные клавиши", "Media keys", "多媒体按键"],
-
-        // честная обратная связь: команда прошивке не прошла (Фаза 6.2)
-        ["osd.failed"]     = ["Не сработало", "Didn't work", "操作失败"],
-        ["osd.failed.sub"] = ["Прошивка не ответила — детали в логе", "Firmware didn't respond — see log", "固件未响应 — 详见日志"],
-
-        // одноразовая подсказка при первом запуске (Фаза 6.1)
-        ["toast.firstrun.title"] = ["XiControl работает в трее", "XiControl is running in the tray", "XiControl 正在系统托盘中运行"],
-        ["toast.firstrun.text"]  = [
-            "Клик по значку — быстрая панель, правый клик — меню. Удержание кнопки Mi тоже открывает панель.",
-            "Click the tray icon for the quick panel, right-click for the menu. Holding the Mi button also opens the panel.",
-            "点击托盘图标打开快捷面板，右键打开菜单。长按 Mi 键也可打开面板。"],
-
-        ["err.title"]   = ["Ошибка", "Error", "错误"],
-        ["err.noiface"] = [
-            "Интерфейс MIFS не найден. Нужны права администратора и совместимый ноутбук Xiaomi/Redmi.",
-            "MIFS interface not found. Requires administrator rights and a compatible Xiaomi/Redmi laptop.",
-            "未找到 MIFS 接口。需要管理员权限和兼容的小米/红米（Redmi）笔记本电脑。"],
-    };
-
+    /// <summary>Строка по ключу: текущий язык → базовый язык → сам ключ.</summary>
     public static string T(string key)
-        => S.TryGetValue(key, out var v) ? v[(int)Current] : key;
+    {
+        if (Strings.TryGetValue(_current, out var cur) && cur.TryGetValue(key, out var v)) return v;
+        if (Strings.TryGetValue(BaseCulture, out var bas) && bas.TryGetValue(key, out var b)) return b;
+        return key;
+    }
 
+    /// <summary>Строка по ключу + string.Format (числа — в формате локали пользователя).</summary>
     public static string T(string key, params object[] args)
-        => string.Format(System.Globalization.CultureInfo.CurrentCulture, T(key), args); // числа — в формате локали пользователя
+        => string.Format(System.Globalization.CultureInfo.CurrentCulture, T(key), args);
+
+    /// <summary>Полный набор «культура → (ключ → значение)» — для теста паритета переводов.</summary>
+    internal static IReadOnlyDictionary<string, Dictionary<string, string>> All => Strings;
+
+    // Загрузка всех встроенных lang.<культура>.json (LogicalName задан в csproj).
+    private static void LoadEmbedded()
+    {
+        var asm = typeof(Loc).Assembly;
+        var found = new List<(LangInfo info, int order)>();
+        foreach (var res in asm.GetManifestResourceNames())
+        {
+            if (!res.StartsWith("lang.", StringComparison.Ordinal) || !res.EndsWith(".json", StringComparison.Ordinal))
+                continue;
+            try
+            {
+                using var stream = asm.GetManifestResourceStream(res)!;
+                var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(stream);
+                if (raw is null) continue;
+
+                string culture = Meta(raw, "_culture");
+                if (string.IsNullOrEmpty(culture)) continue;
+                string name = Meta(raw, "_name") is { Length: > 0 } nm ? nm : culture;
+                int order = raw.TryGetValue("_order", out var o) && o.ValueKind == JsonValueKind.Number
+                    ? o.GetInt32() : int.MaxValue;
+
+                var map = new Dictionary<string, string>(raw.Count);
+                foreach (var kv in raw)
+                    if (!kv.Key.StartsWith('_') && kv.Value.ValueKind == JsonValueKind.String)
+                        map[kv.Key] = kv.Value.GetString()!;
+
+                Strings[culture] = map;
+                found.Add((new LangInfo(culture, name), order));
+            }
+            catch (Exception ex) { Log.Ex($"Loc.Load({res})", ex); } // битый перевод не роняет остальные
+        }
+        // порядок предсказуем: сначала _order, при равенстве — по названию
+        found.Sort((a, b) => a.order != b.order ? a.order.CompareTo(b.order)
+            : string.Compare(a.info.Name, b.info.Name, StringComparison.OrdinalIgnoreCase));
+        foreach (var f in found) Langs.Add(f.info);
+    }
+
+    private static string Meta(Dictionary<string, JsonElement> raw, string key)
+        => raw.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 }

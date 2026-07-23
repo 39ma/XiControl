@@ -10,11 +10,14 @@ internal sealed class FakeMifsClient : IMifsClient
     public readonly List<bool> ChargeCareCalls = [];
     public readonly List<PerfMode> PerfModeCalls = [];
     public bool SetPerfModeResult = true;
+    public PerfMode? Mode;               // что вернёт GetPerfMode
+    public bool ThrowOnGetPerfMode;      // симуляция недоступного железа
 
     /// <summary>Сигнал «SetPerfMode вызван» — для ожидания асинхронных Apply (Task.Run в guard-ах).</summary>
     public readonly SemaphoreSlim PerfModeHit = new(0);
 
-    public PerfMode? GetPerfMode() => null;
+    public PerfMode? GetPerfMode() =>
+        ThrowOnGetPerfMode ? throw new InvalidOperationException("нет железа") : Mode;
 
     public bool SetPerfMode(PerfMode mode)
     {

@@ -17,7 +17,6 @@ public sealed class TrayApp : IDisposable
     private readonly TouchpadControl _touchpad;
     private readonly TouchscreenControl _touchscreen;
     private bool _dark = Theme.IsDark();
-    private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
     private readonly RefreshRateGuard _hzGuard;
     private readonly PowerProfileGuard _powerGuard;
@@ -27,10 +26,8 @@ public sealed class TrayApp : IDisposable
     private bool _autoStart;   // кэш состояния автозапуска (не дёргаем schtasks на каждое меню)
     private bool _lastOnline;  // прошлое состояние питания (для OSD только на реальном переходе)
 
-    // редкий опрос: режим извне меняется только сном/EC, свои изменения обновляют значок сразу
-    private readonly System.Windows.Forms.Timer _iconTimer = new() { Interval = 30000 };
-    private PerfMode? _iconMode;
-    private bool _iconInit;
+    // политика обновления значка (опрос/кэш/тема) — вынесена в TrayIconController
+    private readonly TrayIconController _icon;
 
     // «В дорогу»: наблюдение за 100% вынесено в TravelChargeMonitor
     private readonly TravelChargeMonitor _travel;
@@ -56,7 +53,8 @@ public sealed class TrayApp : IDisposable
     // панель, подписки). Стартовая бизнес-логика — в Start(), её зовёт Program.Main.
     public TrayApp(IMifsClient mifs, AppConfig cfg, IKeyEventSource events,
         ChargeGuard guard, RefreshRateGuard hzGuard, PowerProfileGuard powerGuard,
-        TouchpadControl touchpad, TouchscreenControl touchscreen, TravelChargeMonitor travel)
+        TouchpadControl touchpad, TouchscreenControl touchscreen, TravelChargeMonitor travel,
+        TrayIconController icon)
     {
         _mifs = mifs;
         _cfg = cfg;
@@ -67,6 +65,7 @@ public sealed class TrayApp : IDisposable
         _touchpad = touchpad;
         _touchscreen = touchscreen;
         _travel = travel;
+        _icon = icon;
         ApplyModeVisibility();
 
         _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
@@ -75,18 +74,20 @@ public sealed class TrayApp : IDisposable
 
         _tray = new NotifyIcon
         {
-            Icon = TrayIcons.ForMode(null, _lightTaskbar),
+            Icon = TrayIcons.ForMode(null, Theme.TaskbarIsLight()),
             Visible = true,
             Text = Loc.T("app.name"),
             ContextMenuStrip = _menu,
         };
+        // контроллер решает «когда перерисовать», мы — «как» (рендер + NotifyIcon)
+        _icon.Apply = (mode, light) => { try { _tray.Icon = TrayIcons.ForMode(mode, light); } catch { } };
         // Левый клик тоже открывает меню
         _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(); };
 
         // Профили питания: после применения режима обновить значок трея
         _powerGuard.ModeApplied = () =>
         {
-            if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => UpdateTrayIcon()));
+            if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => _icon.Refresh()));
         };
 
         // Дозарядились до 100% «в дорогу» → OSD + джингл (сам опрос — в мониторе)
@@ -103,7 +104,7 @@ public sealed class TrayApp : IDisposable
 
         // Панель по Mi-кнопке + слушатель клавиш прошивки
         _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
-        _panel.Changed = () => UpdateTrayIcon();
+        _panel.Changed = () => _icon.Refresh();
         _panel.MonitorRequested = ShowMonitor;
         _panel.TravelChanged = _travel.Rearm; // панель сама переключила режим — перевзвести наблюдение
         // Жесты Mi: одинарный/двойной клик настраиваются (MiClickAction/MiDoubleAction);
@@ -137,9 +138,8 @@ public sealed class TrayApp : IDisposable
         };
         _events.KeyPressed += OnKey;
 
-        // Реакция на смену темы Windows + лёгкий опрос значка
+        // Реакция на смену темы Windows
         SystemEvents.UserPreferenceChanged += OnUserPref;
-        _iconTimer.Tick += (_, _) => UpdateTrayIcon();
     }
 
     /// <summary>
@@ -207,10 +207,9 @@ public sealed class TrayApp : IDisposable
         if (_cfg.TouchscreenPersistOff)
             Task.Run(() => Safe(() => { _touchscreen.RestoreAfterBoot(); return true; }, false));
 
-        // слушатель клавиш прошивки + значок по реальному режиму
+        // слушатель клавиш прошивки + значок по реальному режиму (и его лёгкий опрос)
         _events.Start();
-        UpdateTrayIcon();
-        _iconTimer.Start();
+        _icon.Start();
 
         // «Прогрев» трей-меню: без него самый первый клик по значку проглатывается —
         // первый показ ContextMenuStrip после старта инициализирует ленивые ресурсы
@@ -224,15 +223,6 @@ public sealed class TrayApp : IDisposable
     {
         try { _menu.Show(new Point(-32000, -32000)); _menu.Close(); }
         catch (Exception ex) { Log.Ex(nameof(PrimeMenu), ex); }
-    }
-
-    private void UpdateTrayIcon(bool force = false)
-    {
-        var mode = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
-        if (!force && _iconInit && mode == _iconMode) return; // без изменений — не трогаем
-        _iconInit = true;
-        _iconMode = mode;
-        try { _tray.Icon = TrayIcons.ForMode(mode, _lightTaskbar); } catch { }
     }
 
     private void ApplyModeVisibility()
@@ -263,10 +253,9 @@ public sealed class TrayApp : IDisposable
     private void OnUserPref(object? sender, UserPreferenceChangedEventArgs e)
     {
         if (e.Category != UserPreferenceCategory.General) return;
-        _lightTaskbar = Theme.TaskbarIsLight();
         bool dark = Theme.IsDark();
         if (dark != _dark) { _dark = dark; ApplyMenuTheme(); }
-        UpdateTrayIcon(force: true); // тема сменилась — перерисовать даже если режим тот же
+        _icon.ThemeChanged(); // перечитает цвет панели задач и перерисует принудительно
     }
 
     private void OnKey(byte code, byte value)
@@ -631,7 +620,7 @@ public sealed class TrayApp : IDisposable
         Safe(() => _mifs.SetPerfMode(mode), false);
         _cfg.RememberMode(mode);
         _osd.Flash(ModeKind(mode), Loc.T(key));
-        UpdateTrayIcon();
+        _icon.Refresh();
     }
 
     private static OsdKind ModeKind(PerfMode m) => m switch
@@ -656,7 +645,7 @@ public sealed class TrayApp : IDisposable
             _panel.RefreshUi(); // панель открыта: выбор «перелистывается» в ней, OSD не нужен
         else
             _osd.Flash(ModeKind(next), Loc.T(ModeKey(next) ?? "mode.auto"));
-        UpdateTrayIcon();
+        _icon.Refresh();
     }
 
     private void ToggleModeVisibility(bool eco, bool full)
@@ -735,7 +724,7 @@ public sealed class TrayApp : IDisposable
         {
             if (!Safe(() => _mifs.SetPerfMode(m), false))
                 Safe(() => _mifs.SetPerfMode(PerfMode.Auto), false);
-            UpdateTrayIcon();
+            _icon.Refresh();
         }
     }
 
@@ -832,7 +821,6 @@ public sealed class TrayApp : IDisposable
 
         SystemEvents.PowerModeChanged -= OnPower;
         SystemEvents.UserPreferenceChanged -= OnUserPref;
-        _iconTimer.Dispose();
         _mi.Dispose();
         // _events / guard-ы / IPowerEvents / IMifsClient диспоузит DI-провайдер
         // (в обратном порядке создания), TrayApp ими не владеет

@@ -5,10 +5,10 @@ using XiControl.Wmi;
 
 namespace XiControl;
 
-static class Program
+internal static class Program
 {
     [STAThread]
-    static void Main()
+    private static void Main()
     {
         // единственный экземпляр
         using var mutex = new Mutex(true, @"Global\XiControlMutex", out bool created);

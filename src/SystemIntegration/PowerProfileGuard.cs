@@ -19,6 +19,7 @@ public sealed class PowerProfileGuard : IDisposable
 
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
+    private readonly IPowerEvents _power;
     private readonly System.Windows.Forms.Timer _debounce;
     private readonly BrightnessWatcher _brightness = new();
     private readonly System.Threading.Timer _save;
@@ -28,10 +29,11 @@ public sealed class PowerProfileGuard : IDisposable
     /// <summary>Вызывается (на потоке пула) после применения режима — обновить значок трея.</summary>
     public Action? ModeApplied;
 
-    public PowerProfileGuard(IMifsClient mifs, AppConfig cfg)
+    public PowerProfileGuard(IMifsClient mifs, AppConfig cfg, IPowerEvents power)
     {
         _mifs = mifs;
         _cfg = cfg;
+        _power = power;
 
         _debounce = new System.Windows.Forms.Timer { Interval = DebounceMs };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Apply(); };
@@ -41,13 +43,13 @@ public sealed class PowerProfileGuard : IDisposable
         _brightness.Changed += OnBrightnessChanged;
         _brightness.Start();
 
-        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        _power.PowerModeChanged += OnPowerModeChanged;
     }
 
-    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    private void OnPowerModeChanged(PowerModes mode)
     {
         // Resume — выход из сна; StatusChange — смена питания AC↔батарея
-        if (e.Mode is not (PowerModes.Resume or PowerModes.StatusChange)) return;
+        if (mode is not (PowerModes.Resume or PowerModes.StatusChange)) return;
         // окно «затишья» ставим сразу: и переход яркости от Windows, и наше применение через
         // дебаунс не должны попасть в «пользовательскую» яркость (иначе слоты перезапишутся мусором)
         _settleUntil = Environment.TickCount + SettleMs;
@@ -67,7 +69,7 @@ public sealed class PowerProfileGuard : IDisposable
         // режим держат «Профили питания», яркость — самостоятельная опция «Запоминать яркость»
         // (может работать и без профилей). Нечего делать — выходим, не будим пул.
         if (!_cfg.PowerProfiles && !_cfg.RememberBrightness) return;
-        bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
+        bool online = _power.IsOnline;
         PerfMode? wantMode = _cfg.PowerProfiles ? (online ? _cfg.AcPerfMode : _cfg.BatteryPerfMode) : null;
         int? wantBright = _cfg.RememberBrightness ? (online ? _cfg.AcBrightness : _cfg.BatteryBrightness) : null;
 
@@ -94,7 +96,7 @@ public sealed class PowerProfileGuard : IDisposable
         if (!_cfg.RememberBrightness) return; // яркость независима от «Профилей питания»
         if (Environment.TickCount - _settleUntil < 0) return; // ещё «затишье» после смены питания
 
-        bool online = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
+        bool online = _power.IsOnline;
         lock (_lock)
         {
             if (online) { if (_cfg.AcBrightness == level) return; _cfg.AcBrightness = level; }
@@ -105,7 +107,7 @@ public sealed class PowerProfileGuard : IDisposable
 
     public void Dispose()
     {
-        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _power.PowerModeChanged -= OnPowerModeChanged;
         _debounce.Dispose();
         _brightness.Dispose();
         _save.Dispose();

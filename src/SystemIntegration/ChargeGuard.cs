@@ -15,33 +15,35 @@ namespace XiControl.SystemIntegration;
 public sealed class ChargeGuard : IDisposable
 {
     private readonly IMifsClient _mifs;
+    private readonly IPowerEvents _power;
     private readonly Func<bool> _careWanted;   // желаемое состояние (из настроек/UI)
     private readonly System.Windows.Forms.Timer _debounce;
 
-    public ChargeGuard(IMifsClient mifs, Func<bool> careWanted)
+    public ChargeGuard(IMifsClient mifs, IPowerEvents power, Func<bool> careWanted)
     {
         _mifs = mifs;
+        _power = power;
         _careWanted = careWanted;
 
         // события StatusChange могут сыпаться пачкой — гасим дребезг
         _debounce = new System.Windows.Forms.Timer { Interval = 1500 };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reapply(); };
 
-        SystemEvents.PowerModeChanged += OnPowerModeChanged;
-        SystemEvents.SessionEnding += OnSessionEnding;
+        _power.PowerModeChanged += OnPowerModeChanged;
+        _power.SessionEnding += OnSessionEnding;
     }
 
-    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    private void OnPowerModeChanged(PowerModes mode)
     {
         // Resume — выход из сна; StatusChange — смена питания AC↔батарея
-        if (e.Mode is PowerModes.Resume or PowerModes.StatusChange)
+        if (mode is PowerModes.Resume or PowerModes.StatusChange)
         {
             _debounce.Stop();
             _debounce.Start();
         }
         // Suspend — вход в сон/гибернацию/«выключение» с быстрым запуском: ре-арм сразу,
         // без дебаунса — после этого события наш код уже не выполнится
-        else if (e.Mode == PowerModes.Suspend)
+        else if (mode == PowerModes.Suspend)
         {
             _debounce.Stop();
             Reapply();
@@ -50,7 +52,7 @@ public sealed class ChargeGuard : IDisposable
 
     // Завершение сеанса (shutdown/restart/logoff) — последняя возможность заармить EC
     // перед периодом «выключено»; заодно закрывает окно, когда дебаунс (1.5 с) не успел
-    private void OnSessionEnding(object? sender, SessionEndingEventArgs e) => Reapply();
+    private void OnSessionEnding() => Reapply();
 
     /// <summary>Применить желаемое состояние заряда прямо сейчас (напр. при старте).</summary>
     public void Reapply()
@@ -65,8 +67,8 @@ public sealed class ChargeGuard : IDisposable
 
     public void Dispose()
     {
-        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
-        SystemEvents.SessionEnding -= OnSessionEnding;
+        _power.PowerModeChanged -= OnPowerModeChanged;
+        _power.SessionEnding -= OnSessionEnding;
         _debounce.Dispose();
     }
 }

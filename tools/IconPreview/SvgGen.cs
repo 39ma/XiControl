@@ -5,44 +5,44 @@ using System.Text;
 /// Генерирует SVG-версии иконок (та же геометрия, что в Icons.cs) и собирает лист,
 /// как в PNG-превью. Координаты считаются кодом — без ручной арифметики.
 /// </summary>
-static class SvgGen
+internal static class SvgGen
 {
-    const string green = "#34C759", blue = "#5AAAFF", orange = "#FF9500", amber = "#E6BE46",
+    private const string green = "#34C759", blue = "#5AAAFF", orange = "#FF9500", amber = "#E6BE46",
                  gray = "#969699", red = "#FF5A5A", white = "#F0F0F0", batt = "#EBEBEB",
                  card = "#1C1C1E", txt = "#EDEDED";
 
-    static string N(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
-    static double fx(double f) => 12 + f * 24;
-    static double fy(double f) => 12 + f * 24;
+    private static string N(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+    private static double fx(double f) => 12 + f * 24;
+    private static double fy(double f) => 12 + f * 24;
 
-    static string PathS(string d, string col, double sw = 2) => $"<path d=\"{d}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"{N(sw)}\"/>";
-    static string Line(double x1, double y1, double x2, double y2, string col, double sw = 2) =>
+    private static string PathS(string d, string col, double sw = 2) => $"<path d=\"{d}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"{N(sw)}\"/>";
+    private static string Line(double x1, double y1, double x2, double y2, string col, double sw = 2) =>
         $"<line x1=\"{N(x1)}\" y1=\"{N(y1)}\" x2=\"{N(x2)}\" y2=\"{N(y2)}\" stroke=\"{col}\" stroke-width=\"{N(sw)}\"/>";
-    static string Circle(double x, double y, double r, string fill) => $"<circle cx=\"{N(x)}\" cy=\"{N(y)}\" r=\"{N(r)}\" fill=\"{fill}\"/>";
-    static string Rect(double x, double y, double w, double h, double rx, string fill, string? stroke = null, double sw = 2)
+    private static string Circle(double x, double y, double r, string fill) => $"<circle cx=\"{N(x)}\" cy=\"{N(y)}\" r=\"{N(r)}\" fill=\"{fill}\"/>";
+    private static string Rect(double x, double y, double w, double h, double rx, string fill, string? stroke = null, double sw = 2)
     {
         string s = stroke == null ? "" : $" stroke=\"{stroke}\" stroke-width=\"{N(sw)}\"";
         return $"<rect x=\"{N(x)}\" y=\"{N(y)}\" width=\"{N(w)}\" height=\"{N(h)}\" rx=\"{N(rx)}\" fill=\"{fill}\"{s}/>";
     }
-    static string Arc(double cX, double cY, double r, double start, double sweep, string col, double sw = 2)
+    private static string Arc(double cX, double cY, double r, double start, double sweep, string col, double sw = 2)
     {
         double a = start * Math.PI / 180, b = (start + sweep) * Math.PI / 180;
         double sx = cX + Math.Cos(a) * r, sy = cY + Math.Sin(a) * r, ex = cX + Math.Cos(b) * r, ey = cY + Math.Sin(b) * r;
         int large = Math.Abs(sweep) > 180 ? 1 : 0, sweepF = sweep > 0 ? 1 : 0;
         return $"<path d=\"M{N(sx)},{N(sy)} A{N(r)},{N(r)} 0 {large} {sweepF} {N(ex)},{N(ey)}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"{N(sw)}\"/>";
     }
-    static string Bolt(double bcx, double bcy, double bw, double bh, string fill)
+    private static string Bolt(double bcx, double bcy, double bw, double bh, string fill)
     {
         string pts = $"{N(bcx + 0.10 * bw)},{N(bcy - 0.42 * bh)} {N(bcx - 0.22 * bw)},{N(bcy + 0.05 * bh)} {N(bcx - 0.03 * bw)},{N(bcy + 0.05 * bh)} {N(bcx - 0.10 * bw)},{N(bcy + 0.42 * bh)} {N(bcx + 0.22 * bw)},{N(bcy - 0.05 * bh)} {N(bcx + 0.03 * bw)},{N(bcy - 0.05 * bh)}";
         return $"<polygon points=\"{pts}\" fill=\"{fill}\"/>";
     }
 
-    static string Leaf(string col) =>
+    private static string Leaf(string col) =>
         PathS($"M{N(fx(0.36))},{N(fy(-0.32))} C{N(fx(0))},{N(fy(-0.30))} {N(fx(-0.34))},{N(fy(-0.04))} {N(fx(-0.30))},{N(fy(0.30))} " +
               $"C{N(fx(-0.12))},{N(fy(0.44))} {N(fx(0.34))},{N(fy(0.22))} {N(fx(0.36))},{N(fy(-0.32))} Z", col) +
         PathS($"M{N(fx(0.26))},{N(fy(-0.22))} C{N(fx(0.02))},{N(fy(-0.02))} {N(fx(-0.12))},{N(fy(0.10))} {N(fx(-0.22))},{N(fy(0.24))}", col);
 
-    static string Gauge(string col)
+    private static string Gauge(string col)
     {
         double size = 0.82 * 24, rrX = (24 - size) / 2, rrY = (24 - size) / 2 + 0.04 * 24;
         double gcx = rrX + size / 2, gcy = rrY + size / 2, r = size / 2;
@@ -52,7 +52,7 @@ static class SvgGen
              + Circle(gcx, gcy, 1.008 * 1.2, col);
     }
 
-    static string Toggles(string col)
+    private static string Toggles(string col)
     {
         double pillW = 0.74 * 24, pillH = 0.36 * 24, gap = 0.12 * 24, x = (24 - pillW) / 2, total = pillH * 2 + gap, y0 = (24 - total) / 2;
         double sw = pillH / 6, inset = pillH * 0.20, td = pillH - 2 * inset, rr = td / 2;
@@ -64,7 +64,7 @@ static class SvgGen
         return sb.ToString();
     }
 
-    static string Battery(string accent, double fill)
+    private static string Battery(string accent, double fill)
     {
         double w = 0.82 * 24, h = 0.46 * 24, bx = (24 - w) / 2, by = (24 - h) / 2, bw = w - 0.09 * 24, rx = h * 0.16;
         double tx = bx + bw + 0.02 * 24, ty = by + h * 0.3, tw = 0.05 * 24, th = 0.4 * h;
@@ -76,23 +76,23 @@ static class SvgGen
         return sb.ToString();
     }
 
-    static string BoltOverlay()
+    private static string BoltOverlay()
     {
         double cx = 12, cy = 12, w = 24, h = 24;
         string pts = $"{N(cx + 0.05 * w)},{N(cy - 0.20 * h)} {N(cx - 0.12 * w)},{N(cy + 0.03 * h)} {N(cx - 0.017 * w)},{N(cy + 0.03 * h)} {N(cx - 0.05 * w)},{N(cy + 0.20 * h)} {N(cx + 0.12 * w)},{N(cy - 0.03 * h)} {N(cx + 0.017 * w)},{N(cy - 0.03 * h)}";
         return $"<polygon points=\"{pts}\" fill=\"{white}\" stroke=\"{card}\" stroke-width=\"1\"/>";
     }
 
-    static string LeafOverlay()
+    private static string LeafOverlay()
     {
         string d = $"M{N(fx(-0.09))},{N(fy(0.11))} C{N(fx(-0.16))},{N(fy(-0.05))} {N(fx(-0.03))},{N(fy(-0.17))} {N(fx(0.13))},{N(fy(-0.14))} " +
                    $"C{N(fx(0.08))},{N(fy(0.03))} {N(fx(-0.017))},{N(fy(0.11))} {N(fx(-0.09))},{N(fy(0.11))}";
         return PathS(d, card, 1.3) + PathS(d, white, 0.9);
     }
 
-    static string Slash() => Line(0.18 * 24, 0.20 * 24, 24 - 0.18 * 24, 24 - 0.20 * 24, red, 1.4);
+    private static string Slash() => Line(0.18 * 24, 0.20 * 24, 24 - 0.18 * 24, 24 - 0.20 * 24, red, 1.4);
 
-    static string Mic(string col, bool muted)
+    private static string Mic(string col, bool muted)
     {
         double capW = 0.28 * 24, capTop = 0.12 * 24, capH = 0.42 * 24, cx0 = 12 - capW / 2;
         double arcR = 0.24 * 24, arcX = 12 - arcR, arcY = capTop + capH * 0.28, arcCy = arcY + arcR;
@@ -106,7 +106,7 @@ static class SvgGen
         return sb.ToString();
     }
 
-    static string Keyboard(string col)
+    private static string Keyboard(string col)
     {
         double bx = 12 - 0.40 * 24, by = 0.52 * 24, bw = 0.80 * 24, bh = 0.32 * 24, rx = bh * 0.06;
         double sunR = 0.14 * 24, scy = by - 0.05 * 24;
@@ -125,7 +125,7 @@ static class SvgGen
         return sb.ToString();
     }
 
-    static (string label, string file, string inner)[] Icons() => new[]
+    private static (string label, string file, string inner)[] Icons() => new[]
     {
         ("Тихий", "mode-quiet",         Leaf(green)),
         ("Авто", "mode-auto",           Gauge(blue)),
@@ -141,7 +141,7 @@ static class SvgGen
         ("Беречь выкл", "battery-off",  Battery(gray, 0.95) + Slash()),
     };
 
-    static string DoubleBolt(string col)
+    private static string DoubleBolt(string col)
     {
         double bw = 0.6 * 24, off = 0.18 * 24, x = 12 - bw / 2;
         double lcx = (x - off) + bw / 2, rcx = (x + off) + bw / 2;

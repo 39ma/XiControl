@@ -21,7 +21,9 @@ public sealed class TrayApp : IDisposable
     private readonly RefreshRateGuard _hzGuard;
     private readonly PowerProfileGuard _powerGuard;
     private readonly OsdForm _osd = new();
-    private readonly MifsEventWatcher _events = new();
+    private readonly IKeyEventSource _events = new MifsEventWatcher();
+    // общий источник событий питания для guard-ов (сам TrayApp мигрирует на него в Фазе 2)
+    private readonly IPowerEvents _power = new SystemPowerEvents();
     private readonly QuickPanelForm _panel;
     private bool _autoStart;   // кэш состояния автозапуска (не дёргаем schtasks на каждое меню)
     private bool _lastOnline;  // прошлое состояние питания (для OSD только на реальном переходе)
@@ -86,15 +88,15 @@ public sealed class TrayApp : IDisposable
 
         // Страж заряда: применяет желаемое состояние на старте и после сна/смены питания
         // «В дорогу» временно снимает защиту (заряд до 100%), поэтому гард бережёт 80% только когда travel выключен
-        _guard = new ChargeGuard(_mifs, () => _cfg.ChargeCare && !_cfg.TravelMode);
+        _guard = new ChargeGuard(_mifs, _power, () => _cfg.ChargeCare && !_cfg.TravelMode);
         _guard.Reapply();
 
         // Авто-герцовка: частота экрана по питанию (сеть/батарея) на старте и при его смене
-        _hzGuard = new RefreshRateGuard(_cfg);
+        _hzGuard = new RefreshRateGuard(_cfg, _power);
         _hzGuard.Reapply();
 
         // Профили питания: режим + яркость по питанию, на старте и при его смене
-        _powerGuard = new PowerProfileGuard(_mifs, _cfg);
+        _powerGuard = new PowerProfileGuard(_mifs, _cfg, _power);
         _powerGuard.ModeApplied = () =>
         {
             if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => UpdateTrayIcon()));
@@ -930,6 +932,7 @@ public sealed class TrayApp : IDisposable
         _guard.Dispose();
         _hzGuard.Dispose();
         _powerGuard.Dispose();
+        _power.Dispose(); // после guard-ов: они отписываются от него в своих Dispose
         _osd.Dispose();
         _panel.Dispose();
         _settings?.Dispose();

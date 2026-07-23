@@ -51,24 +51,24 @@ public sealed class MicControl : IDisposable
 }
 
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-class MMDeviceEnumerator { }
+internal class MMDeviceEnumerator { }
 
 [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDeviceEnumerator
+internal interface IMMDeviceEnumerator
 {
     int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr ppDevices); // слот 0 (не используем)
     int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice); // слот 1
 }
 
 [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDevice
+internal interface IMMDevice
 {
     int Activate(ref Guid iid, int clsCtx, IntPtr activationParams,
                  [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface); // слот 0
 }
 
 [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IAudioEndpointVolume
+internal interface IAudioEndpointVolume
 {
     int f0(); int f1(); int f2(); int f3(); int f4(); int f5();
     int f6(); int f7(); int f8(); int f9(); int f10();                 // слоты 0..10 (не используем)

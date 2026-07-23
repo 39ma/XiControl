@@ -11,10 +11,9 @@ namespace XiControl.Ui;
 public sealed class TrayApp : IDisposable
 {
     private readonly NotifyIcon _tray;
-    private readonly ContextMenuStrip _menu;
+    private readonly TrayMenuBuilder _menu;
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
-    private bool _dark = Theme.IsDark();
     private readonly OsdForm _osd = new();
     private readonly IKeyEventSource _events;
     private readonly QuickPanelForm _panel;
@@ -46,21 +45,26 @@ public sealed class TrayApp : IDisposable
         _icon = icon;
         _controller = controller;
 
-        _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
-        _menu.Opening += (_, _) => BuildMenu();
-        ApplyMenuTheme();
+        // меню трея: построение/тема/показ — в TrayMenuBuilder, окна и выход — наши колбэки
+        _menu = new TrayMenuBuilder(cfg, mifs, controller)
+        {
+            ShowMonitor = ShowMonitor,
+            OpenSettings = OpenSettings,
+            ExitRequested = () => { _tray!.Visible = false; Application.Exit(); },
+            MonitorVisible = () => _monitor?.Visible == true,
+        };
 
         _tray = new NotifyIcon
         {
             Icon = TrayIcons.ForMode(null, Theme.TaskbarIsLight()),
             Visible = true,
             Text = Loc.T("app.name"),
-            ContextMenuStrip = _menu,
+            ContextMenuStrip = _menu.Menu,
         };
         // контроллер решает «когда перерисовать», мы — «как» (рендер + NotifyIcon)
         _icon.Apply = (mode, light) => { try { _tray.Icon = TrayIcons.ForMode(mode, light); } catch { } };
         // Левый клик тоже открывает меню
-        _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(); };
+        _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) _menu.Show(_tray); };
 
         // Профили питания: после применения режима обновить значок трея
         powerGuard.ModeApplied = () =>
@@ -103,13 +107,13 @@ public sealed class TrayApp : IDisposable
         _controller.TravelCancelled = () => { if (_panel.Visible) _panel.RefreshUi(); };
         _controller.ModeSet = m =>
         {
-            _osd.Flash(ModeKind(m), Loc.T(ModeKey(m) ?? "mode.auto"));
+            _osd.Flash(ModeUi.Kind(m), Loc.T(ModeUi.Key(m) ?? "mode.auto"));
             _icon.Refresh();
         };
         _controller.ModeCycled = m =>
         {
             if (_panel.Visible) _panel.RefreshUi(); // выбор «перелистывается» в панели, OSD не нужен
-            else _osd.Flash(ModeKind(m), Loc.T(ModeKey(m) ?? "mode.auto"));
+            else _osd.Flash(ModeUi.Kind(m), Loc.T(ModeUi.Key(m) ?? "mode.auto"));
             _icon.Refresh();
         };
         _controller.ProfileModeApplied = () => _icon.Refresh();
@@ -189,38 +193,14 @@ public sealed class TrayApp : IDisposable
         // (хэндл меню, первый WMI-вызов в BuildMenu, передний план приложения), и до
         // этого показ закрывается сразу. Делаем это сами на первом холостом ходу цикла
         // сообщений, за экраном и с мгновенным закрытием — пользователь ничего не видит.
-        _osd.BeginInvoke(new Action(PrimeMenu));
-    }
-
-    private void PrimeMenu()
-    {
-        try { _menu.Show(new Point(-32000, -32000)); _menu.Close(); }
-        catch (Exception ex) { Log.Ex(nameof(PrimeMenu), ex); }
-    }
-
-    private void ApplyMenuTheme()
-    {
-        if (_dark)
-        {
-            ToolStripManager.Renderer = new DarkMenuRenderer();
-            _menu.RenderMode = ToolStripRenderMode.ManagerRenderMode;
-            _menu.BackColor = DarkPalette.Bg;
-            _menu.ForeColor = DarkPalette.Text;
-        }
-        else
-        {
-            _menu.RenderMode = ToolStripRenderMode.System;
-            _menu.ResetBackColor();
-            _menu.ResetForeColor();
-        }
+        _osd.BeginInvoke(new Action(_menu.Prime));
     }
 
     private void OnUserPref(object? sender, UserPreferenceChangedEventArgs e)
     {
         if (e.Category != UserPreferenceCategory.General) return;
-        bool dark = Theme.IsDark();
-        if (dark != _dark) { _dark = dark; ApplyMenuTheme(); }
-        _icon.ThemeChanged(); // перечитает цвет панели задач и перерисует принудительно
+        _menu.ThemeChanged(); // перекрасить меню, если тема реально сменилась
+        _icon.ThemeChanged(); // перечитать цвет панели задач и перерисовать значок
     }
 
     private void OnKey(byte code, byte value)
@@ -332,108 +312,6 @@ public sealed class TrayApp : IDisposable
     // Склейка строк подписи OSD через « • » (любая часть может быть null).
     private static string? Append(string? a, string? b) => a is null ? b : b is null ? a : $"{a} • {b}";
 
-    private void ShowMenu()
-    {
-        // приватный метод показа меню трея (правильная позиция + авто-закрытие);
-        // BuildMenu вызовется сам через событие Opening
-        try
-        {
-            var mi = _tray.GetType().GetMethod("ShowContextMenu",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (mi != null) { mi.Invoke(_tray, null); return; }
-        }
-        catch (Exception ex) { Log.Ex(nameof(ShowMenu), ex); }
-        _menu.Show(Cursor.Position); // запасной путь, если приватный API исчезнет из WinForms
-    }
-
-    private void BuildMenu()
-    {
-        // Clear не диспозит старые пункты — освобождаем сами
-        var stale = _menu.Items.Cast<ToolStripItem>().ToArray();
-        _menu.Items.Clear();
-        foreach (var it in stale) it.Dispose();
-
-        // размер иконок меню под текущий DPI (сейчас иконка только у пункта «Язык»)
-        int imgSz = (int)Math.Round(16 * _menu.DeviceDpi / 96.0);
-        _menu.ImageScalingSize = new Size(imgSz, imgSz);
-
-        // --- Заряд ---
-        bool care = Safe(() => _mifs.GetChargeCare(), _cfg.ChargeCare);
-        var charge = new ToolStripMenuItem(Loc.T("menu.charge")) { Checked = care };
-        // состояние читаем в момент клика: пока меню висело, его мог сменить ChargeGuard
-        charge.Click += (_, _) => _controller.ToggleCharge();
-        _menu.Items.Add(charge);
-
-        // «В дорогу»: временный заряд до 100% поверх «беречь 80%» (неактивно при постоянном 100%)
-        var travel = new ToolStripMenuItem(Loc.T("menu.travel")) { Checked = _cfg.TravelMode, Enabled = _cfg.ChargeCare };
-        travel.Click += (_, _) => _controller.SetTravel(!_cfg.TravelMode);
-        _menu.Items.Add(travel);
-
-        // --- Режим совы (не спать) — если фича не скрыта конфигом ---
-        if (_cfg.OwlMode)
-        {
-            var owl = new ToolStripMenuItem(Loc.T("menu.owl")) { Checked = _cfg.Awake };
-            owl.Click += (_, _) => _controller.ToggleAwake();
-            _menu.Items.Add(owl);
-        }
-
-        // --- Авто-герцовка (частота экрана по питанию) ---
-        var hz = new ToolStripMenuItem(Loc.T("menu.hz", _cfg.AcRefreshRate, _cfg.BatteryRefreshRate))
-        { Checked = _cfg.AutoRefreshRate };
-        hz.Click += (_, _) => _controller.ToggleAutoHz(!_cfg.AutoRefreshRate);
-        _menu.Items.Add(hz);
-
-        // --- Монитор (Вт / CPU / RAM) ---
-        var monitor = new ToolStripMenuItem(Loc.T("menu.monitor")) { Checked = _monitor?.Visible == true };
-        monitor.Click += (_, _) => ShowMonitor();
-        _menu.Items.Add(monitor);
-
-        // --- Режим (подменю) ---
-        PerfMode? current = Safe<PerfMode?>(() => _mifs.GetPerfMode(), null);
-        string currentName = current is PerfMode cm && ModeKey(cm) is string mk ? Loc.T(mk) : "—";
-        var perf = new ToolStripMenuItem($"{Loc.T("menu.perf")}:  {currentName}");
-        foreach (var mode in _controller.VisibleModes)
-        {
-            var m = mode;
-            var item = new ToolStripMenuItem(Loc.T(ModeKey(m) ?? "mode.auto")) { Checked = current == m };
-            item.Click += (_, _) => _controller.SetMode(m);
-            perf.DropDownItems.Add(item);
-        }
-        TintDropDown(perf);
-        _menu.Items.Add(perf);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        // --- Настройки (отдельное окно в стиле Win11: все опции по группам) ---
-        var settings = new ToolStripMenuItem(Loc.T("menu.settings") + "…");
-        settings.Click += (_, _) => OpenSettings();
-        _menu.Items.Add(settings);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        // --- Выход ---
-        var exit = new ToolStripMenuItem(Loc.T("menu.exit"));
-        exit.Click += (_, _) => { _tray.Visible = false; Application.Exit(); };
-        _menu.Items.Add(exit);
-    }
-
-    private void TintDropDown(ToolStripMenuItem parent)
-    {
-        if (!_dark) return;
-        parent.DropDown.BackColor = DarkPalette.Bg;
-        parent.DropDown.ForeColor = DarkPalette.Text;
-    }
-
-    private static string? ModeKey(PerfMode m) => m switch
-    {
-        PerfMode.Eco => "mode.eco",
-        PerfMode.Quiet => "mode.quiet",
-        PerfMode.Auto => "mode.auto",
-        PerfMode.Turbo => "mode.turbo",
-        PerfMode.FullSpeed => "mode.full",
-        _ => null,
-    };
-
     private SettingsForm? _settings;
 
     // Открыть окно настроек (лениво создаётся, дальше — из спрятанного состояния).
@@ -466,16 +344,6 @@ public sealed class TrayApp : IDisposable
         }
         _settings.Popup();
     }
-
-    private static OsdKind ModeKind(PerfMode m) => m switch
-    {
-        PerfMode.Eco => OsdKind.Eco,
-        PerfMode.Quiet => OsdKind.Quiet,
-        PerfMode.Auto => OsdKind.Auto,
-        PerfMode.Turbo => OsdKind.Turbo,
-        PerfMode.FullSpeed => OsdKind.Full,
-        _ => OsdKind.Auto,
-    };
 
     private MonitorForm? _monitor;
 

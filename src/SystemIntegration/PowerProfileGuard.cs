@@ -17,7 +17,7 @@ public sealed class PowerProfileGuard : IDisposable
     private const int SettleMs = 3000;      // после смены питания яркость меняем мы и Windows — не считаем её «пользовательской»
     private const int SaveDebounceMs = 800; // не пишем config.json на каждый тик слайдера яркости
 
-    private readonly MifsClient _mifs;
+    private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
     private readonly System.Windows.Forms.Timer _debounce;
     private readonly BrightnessWatcher _brightness = new();
@@ -28,7 +28,7 @@ public sealed class PowerProfileGuard : IDisposable
     /// <summary>Вызывается (на потоке пула) после применения режима — обновить значок трея.</summary>
     public Action? ModeApplied;
 
-    public PowerProfileGuard(MifsClient mifs, AppConfig cfg)
+    public PowerProfileGuard(IMifsClient mifs, AppConfig cfg)
     {
         _mifs = mifs;
         _cfg = cfg;

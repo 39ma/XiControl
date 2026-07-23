@@ -11,7 +11,7 @@ public sealed class TrayApp : IDisposable
 {
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu;
-    private readonly MifsClient _mifs;
+    private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
     private TouchpadControl _touchpad = null!; // создаётся в конструкторе до панели
     private TouchscreenControl _touchscreen = null!; // то же — сенсорный экран
@@ -53,7 +53,7 @@ public sealed class TrayApp : IDisposable
     private (string key, PerfMode mode)[] _modes = [];
     private PerfMode[] _cycle = []; // порядок цикла Mi-кнопки — по нарастанию мощности
 
-    public TrayApp(MifsClient mifs, AppConfig cfg)
+    public TrayApp(IMifsClient mifs, AppConfig cfg)
     {
         _mifs = mifs;
         _cfg = cfg;

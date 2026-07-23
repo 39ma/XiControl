@@ -32,7 +32,7 @@ public sealed class QuickPanelForm : Form
 
     };
 
-    private readonly MifsClient _mifs;
+    private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
     private readonly TouchpadControl _tp;
     private readonly TouchscreenControl _ts;
@@ -70,7 +70,7 @@ public sealed class QuickPanelForm : Form
     /// <summary>Панель переключила режим «В дорогу» — трей запускает/останавливает наблюдение за 100%.</summary>
     public Action? TravelChanged;
 
-    public QuickPanelForm(MifsClient mifs, AppConfig cfg, TouchpadControl touchpad, TouchscreenControl touchscreen)
+    public QuickPanelForm(IMifsClient mifs, AppConfig cfg, TouchpadControl touchpad, TouchscreenControl touchscreen)
     {
         _mifs = mifs;
         _cfg = cfg;

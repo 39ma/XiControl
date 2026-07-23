@@ -14,11 +14,11 @@ namespace XiControl.SystemIntegration;
 /// </summary>
 public sealed class ChargeGuard : IDisposable
 {
-    private readonly MifsClient _mifs;
+    private readonly IMifsClient _mifs;
     private readonly Func<bool> _careWanted;   // желаемое состояние (из настроек/UI)
     private readonly System.Windows.Forms.Timer _debounce;
 
-    public ChargeGuard(MifsClient mifs, Func<bool> careWanted)
+    public ChargeGuard(IMifsClient mifs, Func<bool> careWanted)
     {
         _mifs = mifs;
         _careWanted = careWanted;

@@ -66,9 +66,9 @@ public sealed class MonitorForm : Form
     private int _corner; // скругление текущего вида (общее для Region и рамки)
 
     private readonly AppConfig _cfg;
-    private readonly MifsClient _mifs;
+    private readonly IMifsClient _mifs;
 
-    public MonitorForm(AppConfig cfg, MifsClient mifs)
+    public MonitorForm(AppConfig cfg, IMifsClient mifs)
     {
         _cfg = cfg;
         _mifs = mifs;

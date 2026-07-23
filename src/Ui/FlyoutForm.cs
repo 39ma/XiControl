@@ -12,7 +12,7 @@ public static class FlyoutPalette
     public static readonly Color Card = Color.FromArgb(28, 28, 30);    // фон карточки
     public static readonly Color Border = Color.FromArgb(70, 70, 74);  // рамка по контуру
     public static readonly Color Text = Color.FromArgb(238, 238, 238);
-    public static readonly Color Dim = Color.FromArgb(150, 150, 155);  // вторичный текст
+    public static readonly Color Dim = Color.FromArgb(170, 170, 175);  // вторичный текст (≥4.5:1 к Card — WCAG AA, Фаза 6.3)
     public static readonly Color Green = Color.FromArgb(52, 199, 89);  // ок / заряд / тихий
     public static readonly Color Blue = Color.FromArgb(90, 170, 255);  // авто / CPU
     public static readonly Color Orange = Color.FromArgb(255, 149, 0); // турбо / разряд / «в дорогу»

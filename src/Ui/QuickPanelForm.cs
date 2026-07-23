@@ -30,6 +30,11 @@ public sealed class QuickPanelForm : FlyoutForm
     private bool _tsAvail, _tsOn; // сенсорный экран: найден в системе / включён
     private int _hover = -1; // 0..N-1 режимы, 10=80, 11=100, 12=close, 13=сова, 14=монитор, 15=герцовка, 16=в дорогу, 17=тачпад, 18=тачскрин
 
+    // клавиатурная навигация (Фаза 6.3): порядок обхода ячеек стрелками ←/→,
+    // _focus — индекс в _order (-1 = фокуса нет, до первого нажатия стрелки)
+    private readonly List<int> _order = [];
+    private int _focus = -1;
+
     // единый таймер анимаций (работает, пока панель видна): hover-проявление ячеек
     // (~120 мс на цикл) + время t для живых иконок (стрелка, лист, пламя, звёзды...)
     private const float HoverMs = 120f;
@@ -73,12 +78,20 @@ public sealed class QuickPanelForm : FlyoutForm
         };
 
         // borderless tool-window поверх всех окон — база FlyoutForm
+        AccessibleName = Loc.T("panel.title");
         _ = Handle; // форсируем хэндл (нужен DeviceDpi и маршалинг)
     }
+
+    private long _hiddenAt; // тик последнего скрытия (см. защиту ниже)
 
     public void Toggle()
     {
         if (Visible) { Hide(); return; }
+        // клик по значку трея при открытой панели: mouse down ловит наш глобальный хук
+        // (клик «вне окна» → панель прячется), а затем приходит MouseUp от NotifyIcon —
+        // без этой защиты Toggle видит уже скрытую панель и тут же открывает её заново
+        if (Environment.TickCount64 - _hiddenAt < 300) return;
+        _focus = -1; // фокус появляется с первым нажатием стрелки
         RefreshState();
         DoLayout();
         var wa = Screen.PrimaryScreen!.WorkingArea;
@@ -168,6 +181,54 @@ public sealed class QuickPanelForm : FlyoutForm
 
         Size = new Size(width, height);
         SetRoundedRegion(Sc(18));
+
+        // порядок клавиатурного обхода: режимы, нижний ряд слева направо, кнопки шапки
+        _order.Clear();
+        for (int i = 0; i < n; i++) _order.Add(i);
+        _order.Add(16); _order.Add(10); _order.Add(11);
+        if (!_tsCell.IsEmpty) _order.Add(18);
+        if (!_tpCell.IsEmpty) _order.Add(17);
+        _order.Add(15);
+        if (!_awake.IsEmpty) _order.Add(13);
+        _order.Add(14); _order.Add(12);
+        if (_focus >= _order.Count) _focus = -1; // раскладка сузилась — сбросить
+    }
+
+    private Rectangle RectOf(int id) => id switch
+    {
+        10 => _care80,
+        11 => _care100,
+        12 => _close,
+        13 => _awake,
+        14 => _monBtn,
+        15 => _hzCell,
+        16 => _travelCell,
+        17 => _tpCell,
+        18 => _tsCell,
+        _ => id >= 0 && id < _modeRects.Length ? _modeRects[id] : Rectangle.Empty,
+    };
+
+    // Стрелки/Enter/Space — до диалоговой обработки WinForms (детей-контролов у панели нет)
+    protected override bool ProcessDialogKey(Keys keyData)
+    {
+        switch (keyData)
+        {
+            case Keys.Right:
+            case Keys.Down:
+                _focus = (_focus + 1 + _order.Count) % _order.Count;
+                Invalidate();
+                return true;
+            case Keys.Left:
+            case Keys.Up:
+                _focus = (_focus <= 0 ? _order.Count : _focus) - 1;
+                Invalidate();
+                return true;
+            case Keys.Enter:
+            case Keys.Space:
+                if (_focus >= 0) { Activate(_order[_focus]); return true; }
+                break;
+        }
+        return base.ProcessDialogKey(keyData);
     }
 
     // Esc как системный хоткей на время показа: панель открывается из события WMI-клавиши,
@@ -209,6 +270,7 @@ public sealed class QuickPanelForm : FlyoutForm
         }
         else
         {
+            _hiddenAt = Environment.TickCount64; // для защиты Toggle от мгновенного реопена
             _anim.Stop();
             UnregisterHotKey(Handle, HkEscId);
             RemoveMouseHook();
@@ -274,9 +336,11 @@ public sealed class QuickPanelForm : FlyoutForm
         }
     }
 
-    protected override void OnMouseClick(MouseEventArgs e)
+    protected override void OnMouseClick(MouseEventArgs e) => Activate(HitTest(e.Location));
+
+    // Общий исполнитель для мыши и клавиатуры (h — id ячейки из HitTest/_order)
+    private void Activate(int h)
     {
-        int h = HitTest(e.Location);
         if (h == 12) { Hide(); return; }
         if (h == 14) { MonitorRequested?.Invoke(); return; }
         if (h >= 0 && h < _modes.Length)
@@ -434,6 +498,14 @@ public sealed class QuickPanelForm : FlyoutForm
                 _cfg.Awake ? SvgIcons.OwlAwake : SvgIcons.OwlAsleep,
                 new RectangleF(_awake.X + (_awake.Width - owlIcon) / 2f, _awake.Y + (_awake.Height - owlIcon) / 2f, owlIcon, owlIcon),
                 _cfg.Awake || _hover == 13 ? 1f : 0.6f);
+        }
+
+        // клавиатурный фокус: пунктирное кольцо вокруг текущей ячейки
+        if (_focus >= 0 && _focus < _order.Count && RectOf(_order[_focus]) is { IsEmpty: false } fr)
+        {
+            using var pen = new Pen(FlyoutPalette.Text, 1.4f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+            using var path = Draw.Rounded(new RectangleF(fr.X - 2.5f, fr.Y - 2.5f, fr.Width + 5f, fr.Height + 5f), Sc(11));
+            g.DrawPath(pen, path);
         }
     }
 

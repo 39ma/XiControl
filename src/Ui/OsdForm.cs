@@ -16,7 +16,7 @@ public sealed class OsdForm : Form
     private static readonly Color Card = Color.FromArgb(28, 28, 30);
     private static readonly Color Border = Color.FromArgb(70, 70, 74);
     private static readonly Color TextCol = Color.FromArgb(240, 240, 240);
-    private static readonly Color DimCol = Color.FromArgb(150, 150, 155);
+    private static readonly Color DimCol = Color.FromArgb(170, 170, 175); // ≥4.5:1 к Card (WCAG AA, Фаза 6.3)
 
     // сколько OSD висит до затухания. Единая база, чтобы всплывашки читались одинаково;
     // «Авто» чуть дольше — стрелка спидометра успевает плавно «настроиться».

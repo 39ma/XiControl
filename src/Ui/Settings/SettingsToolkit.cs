@@ -75,7 +75,11 @@ public sealed class SettingsToolkit
     });
 
     public void AddRow(Panel p, string titleKey, string descKey, Control ctl)
-        => p.Controls.Add(Row(Loc.T(titleKey), Loc.T(descKey), ctl));
+    {
+        // экранный диктор: контрол называется как заголовок своей строки
+        if (string.IsNullOrEmpty(ctl.AccessibleName)) ctl.AccessibleName = Loc.T(titleKey);
+        p.Controls.Add(Row(Loc.T(titleKey), Loc.T(descKey), ctl));
+    }
 
     public Panel Row(string title, string desc, Control ctl)
     {
@@ -136,6 +140,7 @@ public sealed class SettingsToolkit
 
     public Panel SubRow(string titleKey, Control ctl)
     {
+        if (string.IsNullOrEmpty(ctl.AccessibleName)) ctl.AccessibleName = Loc.T(titleKey);
         var row = new Panel { Width = RowW, Height = Sc(42), BackColor = T.WinBg, Margin = new Padding(Sc(30), 0, 0, 0) };
         row.Controls.Add(new Label { Text = Loc.T(titleKey), AutoSize = true, ForeColor = T.Text, BackColor = Color.Transparent, Font = CtlFont, Location = new Point(Sc(2), Sc(11)) });
         ctl.Location = new Point(RowW - ctl.Width - Sc(16) - Sc(30), (Sc(42) - ctl.Height) / 2);

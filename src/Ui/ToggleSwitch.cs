@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 
 namespace XiControl.Ui;
 
@@ -32,6 +32,7 @@ public sealed class ToggleSwitch : Control
                  | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
         Cursor = Cursors.Hand;
         TabStop = true;
+        AccessibleRole = AccessibleRole.CheckButton; // экранный диктор читает как переключатель
     }
 
     protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }

@@ -8,22 +8,54 @@ public enum NavGlyph { General, Battery, Display, Perf, Keys, About }
 
 /// <summary>
 /// Левая навигация окна настроек (кастомная отрисовка): подсветка hover/выбора,
-/// акцентная полоска, «О программе» прижата вниз.
+/// акцентная полоска, «О программе» прижата вниз. Доступна с клавиатуры (Фаза 6.3):
+/// Tab фокусирует полосу, стрелки переключают вкладку сразу (как в Настройках Windows).
 /// </summary>
 public sealed class NavStrip : Panel
 {
     private readonly SettingsToolkit _ui;
     public (string key, NavGlyph glyph)[] Tabs = [];
-    public int Selected;
     public Action<int>? SelectedChanged;
     private int _hover = -1;
+    private int _selected;
+
+    /// <summary>Активная вкладка; заодно обновляет имя для экранного диктора.</summary>
+    public int Selected
+    {
+        get => _selected;
+        set
+        {
+            _selected = value;
+            if (value >= 0 && value < Tabs.Length) AccessibleName = Loc.T(Tabs[value].key);
+        }
+    }
 
     public NavStrip(SettingsToolkit ui)
     {
         _ui = ui;
         DoubleBuffered = true;
-        SetStyle(ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+        TabStop = true;
+        AccessibleRole = AccessibleRole.PageTabList;
     }
+
+    // стрелки нужны самому контролу — иначе WinForms уводит фокус на соседний контрол
+    protected override bool IsInputKey(Keys keyData)
+        => keyData is Keys.Up or Keys.Down || base.IsInputKey(keyData);
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (Tabs.Length > 0 && e.KeyCode is Keys.Up or Keys.Down)
+        {
+            int next = (Selected + (e.KeyCode == Keys.Down ? 1 : -1) + Tabs.Length) % Tabs.Length;
+            SelectedChanged?.Invoke(next); // форма выставит Selected и перерисует
+            e.Handled = true;
+        }
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+    protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
     private int ItemH => _ui.Sc(40);
     private int TopPad => _ui.Sc(12);
@@ -37,6 +69,7 @@ public sealed class NavStrip : Panel
     protected override void OnMouseLeave(EventArgs e) { _hover = -1; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnMouseClick(MouseEventArgs e)
     {
+        Focus(); // клик мышью тоже даёт полосе клавиатурный фокус
         int i = HitTest(e.Y);
         if (i >= 0 && i != Selected) SelectedChanged?.Invoke(i);
         base.OnMouseClick(e);
@@ -81,6 +114,14 @@ public sealed class NavStrip : Panel
             TextRenderer.DrawText(g, Loc.T(Tabs[i].key), _ui.TitleFont,
                 new Rectangle(rect.X + _ui.Sc(40), rect.Y, rect.Width - _ui.Sc(40), ItemH),
                 _ui.T.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            // клавиатурный фокус: пунктирная рамка вокруг активной вкладки
+            if (sel && Focused)
+            {
+                using var fr = new Pen(_ui.T.Text2) { DashStyle = DashStyle.Dash };
+                using var fp = Draw.Rounded(new RectangleF(rect.X + 1.5f, rect.Y + 1.5f, rect.Width - 3f, rect.Height - 3f), _ui.Sc(4));
+                g.DrawPath(fr, fp);
+            }
         }
     }
 

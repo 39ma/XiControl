@@ -46,6 +46,18 @@ public static class KeyActions
     /// </summary>
     public static void LaunchCommand(string command)
     {
+        var (path, args) = ParseCommand(command, File.Exists);
+        Launch(path, args);
+    }
+
+    /// <summary>
+    /// Разобрать командную строку в (path, args) — чистая функция без побочных эффектов.
+    /// <paramref name="fileExists"/> — сидка проверки «строка без кавычек целиком является
+    /// существующим файлом» (в проде <see cref="File.Exists(string)"/>); вынесена ради тестов.
+    /// args = null, если аргументов нет.
+    /// </summary>
+    internal static (string Path, string? Args) ParseCommand(string command, Func<string, bool> fileExists)
+    {
         command = command.Trim();
         string path;
         string? args = null;
@@ -58,11 +70,11 @@ public static class KeyActions
         else
         {
             int sp = command.IndexOf(' ');
-            if (sp > 0 && !File.Exists(Environment.ExpandEnvironmentVariables(command)))
+            if (sp > 0 && !fileExists(Environment.ExpandEnvironmentVariables(command)))
             { path = command[..sp]; args = command[(sp + 1)..].Trim(); }
             else path = command;
         }
-        Launch(path, string.IsNullOrWhiteSpace(args) ? null : args);
+        return (path, string.IsNullOrWhiteSpace(args) ? null : args);
     }
 
     /// <summary>Запустить произвольную программу/файл/URL (действие "launch" у клавиш).</summary>

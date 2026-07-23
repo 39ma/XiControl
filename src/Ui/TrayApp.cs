@@ -36,8 +36,9 @@ public sealed class TrayApp : IDisposable
     private readonly System.Windows.Forms.Timer _travelTimer = new() { Interval = 5000 };
     private bool _travelNotified;
 
-    // Жесты Mi-кнопки (клик/двойной/удержание) — вынесены в MiButtonGesture
+    // Жесты Mi-кнопки и роутинг клавиш — вынесены в Input/ (MiButtonGesture, KeyRouter)
     private readonly MiButtonGesture _mi;
+    private readonly KeyRouter _router;
 
     private static readonly (string key, PerfMode mode)[] Modes =
     [
@@ -104,10 +105,30 @@ public sealed class TrayApp : IDisposable
         // двойной = "none" — жест отключён, одинарный срабатывает мгновенно; удержание → панель
         _mi = new MiButtonGesture
         {
-            Click = () => RunKeyAction(_cfg.MiClickAction, _cfg.MiClickCommand),
-            DoubleClick = () => RunKeyAction(_cfg.MiDoubleAction, _cfg.MiDoubleCommand),
+            Click = () => _router!.Run(_cfg.MiClickAction, _cfg.MiClickCommand),
+            DoubleClick = () => _router!.Run(_cfg.MiDoubleAction, _cfg.MiDoubleCommand),
             Hold = () => _panel.Toggle(),
             DoubleEnabled = () => !string.Equals(_cfg.MiDoubleAction, "none", StringComparison.OrdinalIgnoreCase),
+        };
+        // Роутинг клавиш: исполнители действий — пока методы TrayApp (позже — AppController)
+        _router = new KeyRouter(_cfg, _mi)
+        {
+            CycleModes = CycleMode,
+            ToggleCharge = ToggleCharge,
+            TogglePanel = _panel.Toggle,
+            ToggleOwl = ToggleAwake,
+            ToggleMonitor = ToggleMonitor,
+            ToggleTravel = () => SetTravel(!_cfg.TravelMode),
+            ToggleTouchpad = ToggleTouchpadAction,
+            ToggleTouchscreen = ToggleTouchscreenAction,
+            Projection = KeyActions.Projection,
+            OpenSettings = KeyActions.OpenSettings,
+            Copilot = KeyActions.Copilot,
+            Launch = KeyActions.LaunchCommand,
+            MicKey = OnMicKey,
+            BacklightKey = OnBacklightKey,
+            FnLockKey = OnFnLockKey,
+            PanelVisible = () => _panel.Visible,
         };
         _events.KeyPressed += OnKey;
 
@@ -246,51 +267,7 @@ public sealed class TrayApp : IDisposable
     private void OnKey(byte code, byte value)
     {
         if (!_panel.IsHandleCreated) return;
-        _panel.BeginInvoke(() => HandleKey(code, value)); // все события — в UI-поток
-    }
-
-    private void HandleKey(byte code, byte value)
-    {
-        switch (code)
-        {
-            case Mifs.KeyMiDown: _mi.Down(); break;
-            case Mifs.KeyMiUp: _mi.Up(); break;
-            case Mifs.KeyProjection when value == 0:                                 // value 2 = слабый зарядник — пока пропуск
-                RunKeyAction(_cfg.ProjKeyAction, _cfg.ProjKeyCommand); break;
-            case Mifs.KeySettings: OnSettingsKey(); break; // одиночное событие, удержание не ловится
-            case Mifs.KeyAiDown:                                                     // 0x24 (отпускание) игнорируем
-                RunKeyAction(_cfg.AiKeyAction, _cfg.AiKeyCommand); break;
-            case Mifs.KeyMic: OnMicKey(value); break;
-            case Mifs.KeyKbdBacklight: OnBacklightKey(value); break;
-            case Mifs.KeyFnLock: OnFnLockKey(value); break;
-            default:
-                // другие модели шлют другие коды/value — лог помогает разбирать отчёты тестеров
-                Log.Write($"Key: необработанное событие code=0x{code:X2} value=0x{value:X2}");
-                break;
-        }
-    }
-
-    // Выполнить настраиваемое действие клавиши (AppConfig.*Action / *Command).
-    // Неизвестное значение и "none" — молча ничего (совместимость с будущими конфигами).
-    private void RunKeyAction(string? action, string? command)
-    {
-        switch (action)
-        {
-            case "modes": CycleMode(); break;
-            case "charge": ToggleCharge(); break;
-            case "panel": _panel.Toggle(); break;
-            case "owl": if (_cfg.OwlMode) ToggleAwake(); break; // фича скрыта — клавиша не включает
-            case "monitor": ToggleMonitor(); break;
-            case "travel": SetTravel(!_cfg.TravelMode); break;  // без ChargeCare внутри не включится
-            case "touchpad": if (_cfg.TouchpadFeature) ToggleTouchpadAction(); break; // фича скрыта — не трогаем
-            case "touchscreen": if (_cfg.TouchscreenFeature) ToggleTouchscreenAction(); break; // фича скрыта — не трогаем
-            case "projection": KeyActions.Projection(); break;
-            case "settings": KeyActions.OpenSettings(); break;
-            case "copilot": KeyActions.Copilot(); break;
-            case "launch":
-                if (!string.IsNullOrWhiteSpace(command)) KeyActions.LaunchCommand(command);
-                break;
-        }
+        _panel.BeginInvoke(() => _router.Handle(code, value)); // все события — в UI-поток
     }
 
     // Действие «тачпад вкл/выкл»: CM-вызовы небыстрые (отключение узла — сотни мс) — в фоне;
@@ -319,14 +296,6 @@ public sealed class TrayApp : IDisposable
                             Loc.T(b ? "osd.touchscreen.on" : "osd.touchscreen.off"));
         }));
     });
-
-    // Клавиша «Настройки»: настраиваемое действие; при открытой панели — всегда заряд
-    // (переключается пилюля в ней), независимо от ремапа.
-    private void OnSettingsKey()
-    {
-        if (_panel.Visible) ToggleCharge();
-        else RunKeyAction(_cfg.SettingsKeyAction, _cfg.SettingsKeyCommand);
-    }
 
     // Переключить лимит заряда на противоположный (OSD/панель — внутри ToggleCare)
     private void ToggleCharge()

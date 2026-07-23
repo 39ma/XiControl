@@ -13,17 +13,15 @@ public sealed class TrayApp : IDisposable
     private readonly ContextMenuStrip _menu;
     private readonly IMifsClient _mifs;
     private readonly AppConfig _cfg;
-    private TouchpadControl _touchpad = null!; // создаётся в конструкторе до панели
-    private TouchscreenControl _touchscreen = null!; // то же — сенсорный экран
+    private readonly TouchpadControl _touchpad;
+    private readonly TouchscreenControl _touchscreen;
     private bool _dark = Theme.IsDark();
     private bool _lightTaskbar = Theme.TaskbarIsLight();
     private readonly ChargeGuard _guard;
     private readonly RefreshRateGuard _hzGuard;
     private readonly PowerProfileGuard _powerGuard;
     private readonly OsdForm _osd = new();
-    private readonly IKeyEventSource _events = new MifsEventWatcher();
-    // общий источник событий питания для guard-ов (сам TrayApp мигрирует на него в Фазе 2)
-    private readonly IPowerEvents _power = new SystemPowerEvents();
+    private readonly IKeyEventSource _events;
     private readonly QuickPanelForm _panel;
     private bool _autoStart;   // кэш состояния автозапуска (не дёргаем schtasks на каждое меню)
     private bool _lastOnline;  // прошлое состояние питания (для OSD только на реальном переходе)
@@ -55,22 +53,21 @@ public sealed class TrayApp : IDisposable
     private (string key, PerfMode mode)[] _modes = [];
     private PerfMode[] _cycle = []; // порядок цикла Mi-кнопки — по нарастанию мощности
 
-    public TrayApp(IMifsClient mifs, AppConfig cfg)
+    // Конструктор только сохраняет зависимости и монтирует UI-каркас (меню, значок,
+    // панель, подписки). Стартовая бизнес-логика — в Start(), её зовёт Program.Main.
+    public TrayApp(IMifsClient mifs, AppConfig cfg, IKeyEventSource events,
+        ChargeGuard guard, RefreshRateGuard hzGuard, PowerProfileGuard powerGuard,
+        TouchpadControl touchpad, TouchscreenControl touchscreen)
     {
         _mifs = mifs;
         _cfg = cfg;
+        _events = events;
+        _guard = guard;
+        _hzGuard = hzGuard;
+        _powerGuard = powerGuard;
+        _touchpad = touchpad;
+        _touchscreen = touchscreen;
         ApplyModeVisibility();
-
-        // пока показываем состояние из конфига; реальное уточняем в фоне —
-        // schtasks /query может блокировать до 10 с, старту это ни к чему
-        _autoStart = cfg.AutoStart;
-        Task.Run(() =>
-        {
-            _autoStart = Safe(AutoStart.IsEnabled, cfg.AutoStart);
-            // самопочинка: после обновления/переноса exe задача указывает на пропавший путь
-            // и молча не стартует — пересоздаём на текущий exe
-            if (_autoStart) Safe(() => { AutoStart.RepairIfBroken(); return true; }, true);
-        });
 
         _menu = new ContextMenuStrip { Font = new Font("Segoe UI", 9F) };
         _menu.Opening += (_, _) => BuildMenu();
@@ -86,25 +83,58 @@ public sealed class TrayApp : IDisposable
         // Левый клик тоже открывает меню
         _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(); };
 
-        // Страж заряда: применяет желаемое состояние на старте и после сна/смены питания
-        // «В дорогу» временно снимает защиту (заряд до 100%), поэтому гард бережёт 80% только когда travel выключен
-        _guard = new ChargeGuard(_mifs, _power, () => _cfg.ChargeCare && !_cfg.TravelMode);
-        _guard.Reapply();
-
-        // Авто-герцовка: частота экрана по питанию (сеть/батарея) на старте и при его смене
-        _hzGuard = new RefreshRateGuard(_cfg, _power);
-        _hzGuard.Reapply();
-
-        // Профили питания: режим + яркость по питанию, на старте и при его смене
-        _powerGuard = new PowerProfileGuard(_mifs, _cfg, _power);
+        // Профили питания: после применения режима обновить значок трея
         _powerGuard.ModeApplied = () =>
         {
             if (_osd.IsHandleCreated) _osd.BeginInvoke(new Action(() => UpdateTrayIcon()));
         };
 
+        _travelTimer.Tick += (_, _) => CheckTravelFull();
+
+        // OSD на смену питания
+        _ = _osd.Handle; // форсируем создание хэндла для маршалинга событий в UI-поток
+        _lastOnline = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
+        SystemEvents.PowerModeChanged += OnPower;
+
+        // Панель по Mi-кнопке + слушатель клавиш прошивки
+        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
+        _panel.Changed = () => UpdateTrayIcon();
+        _panel.MonitorRequested = ShowMonitor;
+        _panel.TravelChanged = OnPanelTravelChanged;
+        _miHold.Tick += (_, _) => OnMiHold();
+        _miClick.Tick += (_, _) => OnMiClickTimeout();
+        _events.KeyPressed += OnKey;
+
+        // Реакция на смену темы Windows + лёгкий опрос значка
+        SystemEvents.UserPreferenceChanged += OnUserPref;
+        _iconTimer.Tick += (_, _) => UpdateTrayIcon();
+    }
+
+    /// <summary>
+    /// Стартовая бизнес-логика (восстановление режима/заряда/совы, запуск слушателей).
+    /// Отдельно от конструктора: граф объектов уже собран, порядок — как до Application.Run.
+    /// </summary>
+    public void Start()
+    {
+        // пока показываем состояние из конфига; реальное уточняем в фоне —
+        // schtasks /query может блокировать до 10 с, старту это ни к чему
+        _autoStart = _cfg.AutoStart;
+        Task.Run(() =>
+        {
+            _autoStart = Safe(AutoStart.IsEnabled, _cfg.AutoStart);
+            // самопочинка: после обновления/переноса exe задача указывает на пропавший путь
+            // и молча не стартует — пересоздаём на текущий exe
+            if (_autoStart) Safe(() => { AutoStart.RepairIfBroken(); return true; }, true);
+        });
+
+        // Страж заряда: применить желаемое состояние на старте
+        _guard.Reapply();
+
+        // Авто-герцовка: частота экрана по текущему питанию
+        _hzGuard.Reapply();
+
         // «В дорогу»: следим за достижением 100%. Если стартовали посреди режима — на зарядке
         // продолжаем ждать, иначе (уже отключены) сбрасываем: режим живёт только на зарядке.
-        _travelTimer.Tick += (_, _) => CheckTravelFull();
         if (_cfg.TravelMode)
         {
             if (SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online) _travelTimer.Start();
@@ -138,35 +168,16 @@ public sealed class TrayApp : IDisposable
         else if (_cfg.Awake) { AwakeMode.Enable(_cfg); _cfg.Save(); }
         else if (_cfg.AwakeSavedLidAc is not null) { AwakeMode.Disable(_cfg); _cfg.Save(); }
 
-        // OSD на смену питания
-        _ = _osd.Handle; // форсируем создание хэндла для маршалинга событий в UI-поток
-        _lastOnline = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
-        SystemEvents.PowerModeChanged += OnPower;
-
-        // Панель по Mi-кнопке + слушатель клавиш прошивки
-        _touchpad = new TouchpadControl(_cfg);
-        _touchscreen = new TouchscreenControl(_cfg);
         // страховка «не залипает»: если тачпад/экран пришлось отключить персистентно,
         // после перезагрузки включаем их сами (в фоне — PnP-вызовы небыстрые)
         if (_cfg.TouchpadPersistOff)
             Task.Run(() => Safe(() => { _touchpad.RestoreAfterBoot(); return true; }, false));
         if (_cfg.TouchscreenPersistOff)
             Task.Run(() => Safe(() => { _touchscreen.RestoreAfterBoot(); return true; }, false));
-        _panel = new QuickPanelForm(_mifs, _cfg, _touchpad, _touchscreen);
-        _panel.Changed = () => UpdateTrayIcon();
-        _panel.MonitorRequested = ShowMonitor;
-        _panel.TravelChanged = OnPanelTravelChanged;
-        _miHold.Tick += (_, _) => OnMiHold();
-        _miClick.Tick += (_, _) => OnMiClickTimeout();
-        _events.KeyPressed += OnKey;
+
+        // слушатель клавиш прошивки + значок по реальному режиму
         _events.Start();
-
-        // Значок трея по режиму + реакция на смену темы Windows
-        SystemEvents.UserPreferenceChanged += OnUserPref;
         UpdateTrayIcon();
-
-        // Лёгкий опрос: держим значок в соответствии с реальным режимом (любой источник)
-        _iconTimer.Tick += (_, _) => UpdateTrayIcon();
         _iconTimer.Start();
 
         // «Прогрев» трей-меню: без него самый первый клик по значку проглатывается —
@@ -928,11 +939,8 @@ public sealed class TrayApp : IDisposable
         _travelTimer.Dispose();
         _miHold.Dispose();
         _miClick.Dispose();
-        _events.Dispose();
-        _guard.Dispose();
-        _hzGuard.Dispose();
-        _powerGuard.Dispose();
-        _power.Dispose(); // после guard-ов: они отписываются от него в своих Dispose
+        // _events / guard-ы / IPowerEvents / IMifsClient диспоузит DI-провайдер
+        // (в обратном порядке создания), TrayApp ими не владеет
         _osd.Dispose();
         _panel.Dispose();
         _settings?.Dispose();

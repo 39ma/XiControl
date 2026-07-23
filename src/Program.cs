@@ -1,5 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using XiControl.Config;
 using XiControl.Localization;
+using XiControl.SystemIntegration;
 using XiControl.Ui;
 using XiControl.Wmi;
 
@@ -16,14 +18,35 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
 
-        var cfg = new JsonConfigStore().Load();
-        Log.Enabled = cfg.LogEnabled; // до этой строчки лог включён — ошибки старта не теряем
-        Loc.Current = cfg.Language;
+        // Граф объектов: все singleton, провайдер владеет Dispose (в обратном порядке создания).
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfigStore>(new JsonConfigStore());
+        services.AddSingleton(sp => sp.GetRequiredService<IConfigStore>().Load());
+        services.AddSingleton<ILocalizer, Localizer>();
+        services.AddSingleton<IMifsClient, MifsClient>();
+        services.AddSingleton<IKeyEventSource, MifsEventWatcher>();
+        services.AddSingleton<IPowerEvents, SystemPowerEvents>();
+        services.AddSingleton<TouchpadControl>();
+        services.AddSingleton<TouchscreenControl>();
+        // «В дорогу» временно снимает защиту (заряд до 100%) — гард бережёт 80% только когда travel выключен
+        services.AddSingleton(sp =>
+        {
+            var c = sp.GetRequiredService<AppConfig>();
+            return new ChargeGuard(sp.GetRequiredService<IMifsClient>(), sp.GetRequiredService<IPowerEvents>(),
+                () => c.ChargeCare && !c.TravelMode);
+        });
+        services.AddSingleton<RefreshRateGuard>();
+        services.AddSingleton<PowerProfileGuard>();
+        services.AddSingleton<TrayApp>();
+        using var provider = services.BuildServiceProvider();
 
-        MifsClient mifs;
+        var cfg = provider.GetRequiredService<AppConfig>();
+        Log.Enabled = cfg.LogEnabled; // до этой строчки лог включён — ошибки старта не теряем
+        provider.GetRequiredService<ILocalizer>().Current = cfg.Language;
+
         try
         {
-            mifs = new MifsClient();
+            _ = provider.GetRequiredService<IMifsClient>(); // ранняя проверка железа (ctor бросает без MIFS)
         }
         catch (Exception ex)
         {
@@ -34,8 +57,7 @@ internal static class Program
             return;
         }
 
-        using var tray = new TrayApp(mifs, cfg);
+        provider.GetRequiredService<TrayApp>().Start();
         Application.Run();
-        mifs.Dispose();
     }
 }
